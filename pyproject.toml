@@ -1,11 +1,12 @@
 [project]
 name = "mtopt"
 version = "0.1.0"
-description = "Matrix train optimizer"
+description = "Tensor rank cross and matrix train optimizers."
 authors = [
-    {name = "Roman Ellerbrock",email = "re@terraquantum.swiss>, Aleksandr Berezutskii <albe@terraquantum.swiss"}
+    { name = "Roman Ellerbrock", email = "re@terraquantum.swiss" },
+    { name = "Aleksandr Berezutskii", email = "albe@terraquantum.swiss" },
 ]
-license = {text = "MIT"}
+license-files = ["LICENSE.md"]
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
