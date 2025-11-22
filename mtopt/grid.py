@@ -1,7 +1,13 @@
+"""
+Docstring
+This code has been taken and adapted from the PyQuTree package authored by Roman Ellerbrock.
+"""
+
 import numpy as np
-from .tensor import *
-from .network import *
-from ..matrix_factorizations.maxvol import maxvol
+
+from tensor import *
+from network import *
+from maxvol import maxvol
 
 def _cartesian_product(A, B):
     return np.array([[*a, *b] for a in A for b in B])
