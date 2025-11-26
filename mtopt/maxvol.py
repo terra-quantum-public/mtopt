@@ -1,156 +1,294 @@
-""" This code has been taken and adapted from the teneva package. """
+r"""
+Maximal-volume submatrix selection.
 
-"""Package teneva, module maxvol: maxvol-like algorithms.
+This module provides implementations of the *maxvol* and *rectangular maxvol*
+algorithms for tall matrices:
 
-This module contains the implementation of the maxvol algorithm (function
-"maxvol") and rect_maxvol algorithm (function "maxvol_rect") for matrices.
-The corresponding functions find in a given matrix square and rectangular
-maximal-volume submatrix, respectively (for the case of square submatrix, it
-has approximately the maximum value of the modulus of the determinant).
+* :func:`maxvol` finds a square submatrix of approximately maximal volume
+  (i.e., with near-maximal absolute determinant).
+* :func:`maxvol_rect` extends this to rectangular submatrices by greedily
+  adding rows to the initial square maxvol selection.
 
+The implementations are adapted from the `teneva` package.
 """
+
+from __future__ import annotations
+
+from typing import Tuple
+
 import numpy as np
-from scipy.linalg import lu
-from scipy.linalg import solve_triangular
+from scipy.linalg import lu, solve_triangular
 
 
-def maxvol(A, e=1.05, k=100, eps=1e-8):
-    """Compute the maximal-volume submatrix for given tall matrix.
+__all__ = ["maxvol", "maxvol_rect"]
 
-    Args:
-        A (np.ndarray): tall matrix of the shape [n, r] (n > r).
-        e (float): accuracy parameter (should be >= 1). If the parameter is
-            equal to 1, then the maximum number of iterations will be performed
-            until true convergence is achieved. If the value is greater than
-            one, the algorithm will complete its work faster, but the accuracy
-            will be slightly lower (in most cases, the optimal value is within
-            the range of 1.01 - 1.1).
-        k (int): maximum number of iterations (should be >= 1).
-        eps (float): small value added to the diagonal of the matrix U in the
-            LU decomposition (should be >= 0). This value is used to avoid
-            division by zero in the case of a singular matrix. If the value is
-            equal to zero, then the algorithm will not work correctly for
-            singular matrices. If the value is too large, then the accuracy of
-            the algorithm will be significantly reduced. The recommended value
-            is 1e-8, which is sufficient for most cases.
 
-    Returns:
-        (np.ndarray, np.ndarray): the row numbers I containing the maximal
-        volume submatrix in the form of 1D array of length r and coefficient
-        matrix B in the form of 2D array of shape [n, r], such that
-        A = B A[I, :] and A (A[I, :])^{-1} = B.
+def maxvol(
+    matrix: np.ndarray,
+    accuracy: float = 1.05,
+    max_iters: int = 100,
+    eps: float = 1e-8,
+) -> Tuple[np.ndarray, np.ndarray]:
+    r"""
+    Compute a square maximal-volume submatrix of a tall matrix.
 
-    Note:
-        The description of the basic implementation of this algorithm is
-        presented in the work: Goreinov S., Oseledets, I., Savostyanov, D.,
-        Tyrtyshnikov, E., Zamarashkin, N. "How to find a good submatrix".
-        Matrix Methods: Theory, Algorithms And Applications: Dedicated to the Memory of Gene Golub (2010): 247-256.
+    Given a tall matrix :math:`A \in \mathbb{R}^{n \times r}` with
+    :math:`n \ge r`, this function finds a set of row indices ``row_indices``
+    (of length ``r``) and a coefficient matrix ``coeff_matrix`` of shape
+    ``(n, r)`` such that
 
+    .. math::
+
+        A \approx B \, A[\mathrm{row\_indices}, :],
+
+    where ``B`` is ``coeff_matrix``. For the exact algorithm description,
+    see the reference below.
+
+    Parameters
+    ----------
+    matrix :
+        Tall input matrix of shape ``(n, r)`` with ``n >= r``.
+    accuracy :
+        Accuracy parameter :math:`e \ge 1`. If ``accuracy == 1``, the
+        algorithm iterates until true convergence (up to ``max_iters``).
+        For ``accuracy > 1``, the algorithm may terminate earlier with
+        slightly reduced accuracy; typical values are in the range
+        ``[1.01, 1.1]``.
+    max_iters :
+        Maximum number of refinement iterations (must be >= 1).
+    eps :
+        Small non-negative value added to the diagonal of the ``U`` factor
+        in the LU decomposition in case of singularity. This avoids division
+        by zero when solving triangular systems. If too large, the accuracy
+        of the algorithm may degrade; the default ``1e-8`` is usually
+        sufficient.
+
+    Returns
+    -------
+    row_indices : ndarray
+        1D integer array of length ``r`` containing the indices of the
+        selected rows that form the square maximal-volume submatrix.
+    coeff_matrix : ndarray
+        2D array of shape ``(n, r)`` such that approximately
+        ``matrix ≈ coeff_matrix @ matrix[row_indices, :]``. In the ideal
+        case, :math:`A (A[\text{row\_indices}, :])^{-1} = B`.
+
+    Raises
+    ------
+    ValueError
+        If the input matrix is not tall (i.e. ``n < r``).
+
+    Notes
+    -----
+    Basic algorithm reference:
+
+    * S. A. Goreinov, I. V. Oseledets, D. V. Savostyanov,
+      E. E. Tyrtyshnikov, N. L. Zamarashkin,
+      "How to find a good submatrix",
+      *Matrix Methods: Theory, Algorithms And Applications*,
+      Dedicated to the Memory of Gene Golub (2010), 247-256.
     """
-    n, r = A.shape
+    num_rows, rank = matrix.shape
 
-    if n == r:
-        I = list(range(r))
-        return I, A
+    if num_rows == rank:
+        row_indices = np.arange(rank, dtype=int)
+        return row_indices, matrix
 
-    if n < r:
-        raise ValueError('Input matrix should be "tall"')
+    if num_rows < rank:
+        raise ValueError('Input matrix should be "tall" (n >= r).')
 
-    P, L, U = lu(A, check_finite=False)
+    # LU decomposition without pivoting checks for speed
+    p_matrix, lower, upper = lu(matrix, check_finite=False, permute_l=False) # pylint: disable=W0632
+
     try:
-        I = P[:, :r].argmax(axis=0)
-        Q = solve_triangular(U, A.T, trans=1, check_finite=False)
-        B = solve_triangular(L[:r, :], Q, trans=1, check_finite=False,
-            unit_diagonal=True, lower=True).T
+        # Initial row indices from LU permutation
+        row_indices = p_matrix[:, :rank].argmax(axis=0)
+
+        # Solve U^T * Q = A  =>  Q = (U^T)^{-1} A
+        q_matrix = solve_triangular(
+            upper,
+            matrix.T,
+            trans=1,
+            check_finite=False,
+        )
+
+        # Solve L^T * B^T = Q  =>  B = ((L^T)^{-1} Q)^T
+        coeff_matrix = solve_triangular(
+            lower[:rank, :],
+            q_matrix,
+            trans=1,
+            check_finite=False,
+            unit_diagonal=True,
+            lower=True,
+        ).T
     except np.linalg.LinAlgError:
-        U[np.diag_indices_from(U)] += eps
-        I = P[:, :r].argmax(axis=0)
-        Q = solve_triangular(U, A.T, trans=1, check_finite=False)
-        B = solve_triangular(L[:r, :], Q, trans=1, check_finite=False,
-            unit_diagonal=True, lower=True).T
+        # Regularize diagonal of U in case of singularity
+        upper[np.diag_indices_from(upper)] += eps
+        row_indices = p_matrix[:, :rank].argmax(axis=0)
 
-    for _ in range(k):
-        i, j = np.divmod(np.abs(B).argmax(), r)
-        if np.abs(B[i, j]) <= e:
+        q_matrix = solve_triangular(
+            upper,
+            matrix.T,
+            trans=1,
+            check_finite=False,
+        )
+        coeff_matrix = solve_triangular(
+            lower[:rank, :],
+            q_matrix,
+            trans=1,
+            check_finite=False,
+            unit_diagonal=True,
+            lower=True,
+        ).T
+
+    # Greedy refinement iterations
+    for _ in range(max_iters):
+        flat_idx = np.abs(coeff_matrix).argmax()
+        row_idx, col_idx = divmod(flat_idx, rank)
+
+        if np.abs(coeff_matrix[row_idx, col_idx]) <= accuracy:
             break
 
-        I[j] = i
+        row_indices[col_idx] = row_idx
 
-        bj = B[:, j]
-        bi = B[i, :].copy()
-        bi[j] -= 1.
+        col_vector = coeff_matrix[:, col_idx]
+        row_vector = coeff_matrix[row_idx, :].copy()
+        row_vector[col_idx] -= 1.0
 
-        B -= np.outer(bj, bi / B[i, j])
+        coeff_matrix -= np.outer(
+            col_vector, row_vector / coeff_matrix[row_idx, col_idx]
+        )
 
-    return I, B
+    return row_indices, coeff_matrix
 
-def maxvol_rect(A, e=1.1, dr_min=0, dr_max=None, e0=1.05, k0=10):
-    """Compute the maximal-volume rectangular submatrix for given tall matrix.
 
-    Within the framework of this function, the original maxvol algorithm is
-    first called (see function maxvol). Then additional rows of the matrix
-    are greedily added until the maximum allowed number is reached or until
-    convergence.
+def maxvol_rect(
+    matrix: np.ndarray,
+    accuracy: float = 1.1,
+    min_extra_rows: int = 0,
+    max_extra_rows: int | None = None,
+    base_accuracy: float = 1.05,
+    base_max_iters: int = 10,
+) -> Tuple[np.ndarray, np.ndarray]:
+    r"""
+    Compute a rectangular maximal-volume submatrix of a tall matrix.
 
-    Args:
-        A (np.ndarray): tall matrix of the shape [n, r] (n > r).
-        e (float): accuracy parameter.
-        dr_min (int): minimum number of added rows (should be >= 0 and <= n-r).
-        dr_max (int): maximum number of added rows (should be >= 0). If the
-            value is not specified, then the number of added rows will be
-            determined by the precision parameter e, while the resulting
-            submatrix can even has the same size as the original matrix A.
-            If r + dr_max is greater than n, then dr_max will be set such
-            that r + dr_max = n.
-        e0 (float): accuracy parameter for the original maxvol algorithm
-            (should be >= 1). See function "maxvol" for details.
-        k0 (int): maximum number of iterations for the original maxvol algorithm
-            (should be >= 1). See function "maxvol" for details.
+    This function first applies :func:`maxvol` to find a square maximal-volume
+    submatrix. It then greedily adds additional rows to obtain a rectangular
+    submatrix of (approximately) maximal volume, subject to the constraints
+    on the number of additional rows.
 
-    Returns:
-        (np.ndarray, np.ndarray): the row numbers I containing the rectangular
-        maximal-volume submatrix in the form of 1D array of length r + dr,
-        where dr is a number of additional selected rows (dr >= dr_min and
-        dr <= dr_max) and coefficient matrix B in the form of 2D array of shape
-        [n, r+dr], such that A = B A[I, :].
+    Parameters
+    ----------
+    matrix :
+        Tall input matrix of shape ``(n, r)`` with ``n > r``.
+    accuracy :
+        Accuracy parameter :math:`e > 0` controlling the stopping criterion
+        for the greedy extension. The algorithm stops if the candidate
+        contribution falls below ``accuracy**2`` (once the minimum size is
+        reached).
+    min_extra_rows :
+        Minimum number of **additional** rows to be added on top of the
+        initial square maxvol submatrix (must satisfy
+        ``0 <= min_extra_rows <= n - r``).
+    max_extra_rows :
+        Maximum number of additional rows to be added. If ``None``, rows are
+        added until the precision criterion governed by ``accuracy`` is
+        satisfied, potentially selecting all rows (i.e. the full matrix).
+        If ``r + max_extra_rows > n``, the effective maximum is clipped so
+        that ``r + max_extra_rows == n``.
+    base_accuracy :
+        Accuracy parameter for the initial square maxvol call
+        (must be >= 1). Passed as ``accuracy`` to :func:`maxvol`.
+    base_max_iters :
+        Maximum number of iterations for the initial square maxvol call
+        (must be >= 1). Passed as ``max_iters`` to :func:`maxvol`.
 
-    Note:
-        The description of the basic implementation of this algorithm is
-        presented in the work: Mikhalev A, Oseledets I., "Rectangular
-        maximum-volume submatrices and their applications." Linear Algebra and
-        its Applications 538 (2018): 187-211.
+    Returns
+    -------
+    row_indices : ndarray
+        1D integer array of length ``r + dr`` with the selected row indices,
+        where ``dr`` is the number of additional rows added. It satisfies
+        ``min_extra_rows <= dr <= max_extra_rows`` (after clipping), or
+        ``dr >= min_extra_rows`` if ``max_extra_rows`` is ``None``.
+    coeff_matrix : ndarray
+        2D array of shape ``(n, r + dr)`` such that approximately
 
+        .. math::
+
+            A \approx B \, A[\mathrm{row\_indices}, :],
+
+        where ``B`` is ``coeff_matrix``.
+
+    Raises
+    ------
+    ValueError
+        If the minimum/maximum number of additional rows is inconsistent.
+
+    Notes
+    -----
+    Rectangular maxvol reference:
+
+    * A. Mikhalev, I. V. Oseledets,
+      "Rectangular maximum-volume submatrices and their applications",
+      *Linear Algebra and its Applications* 538 (2018), 187–211.
     """
-    n, r = A.shape
-    r_min = r + dr_min
-    r_max = r + dr_max if dr_max is not None else n
-    r_max = min(r_max, n)
+    num_rows, rank = matrix.shape
 
-    if r_min < r or r_min > r_max or r_max > n:
-        raise ValueError('Invalid minimum/maximum number of added rows')
+    min_rank = rank + min_extra_rows
+    max_rank = rank + max_extra_rows if max_extra_rows is not None else num_rows
+    max_rank = min(max_rank, num_rows)
 
-    I0, B = maxvol(A, e0, k0)
+    if min_rank < rank or min_rank > max_rank or max_rank > num_rows:
+        raise ValueError("Invalid minimum/maximum number of added rows.")
 
-    I = np.hstack([I0, np.zeros(r_max-r, dtype=I0.dtype)])
-    S = np.ones(n, dtype=int)
-    S[I0] = 0
-    F = S * np.linalg.norm(B, axis=1)**2
+    # Initial square maxvol selection
+    row_indices_initial, coeff_matrix = maxvol(
+        matrix,
+        accuracy=base_accuracy,
+        max_iters=base_max_iters,
+    )
 
-    for k in range(r, r_max):
-        i = np.argmax(F)
+    # Allocate space for up to max_rank rows
+    row_indices = np.hstack(
+        [
+            row_indices_initial,
+            np.zeros(max_rank - rank, dtype=row_indices_initial.dtype),
+        ]
+    )
 
-        if k >= r_min and F[i] <= e*e:
+    # Mask of rows that can still be selected
+    selectable_mask = np.ones(num_rows, dtype=int)
+    selectable_mask[row_indices_initial] = 0
+
+    # Selection score: norm^2 of rows of coeff_matrix, zeroed for already selected rows
+    score = selectable_mask * np.linalg.norm(coeff_matrix, axis=1) ** 2
+
+    for col_idx in range(rank, max_rank):
+        row_idx = np.argmax(score)
+
+        if col_idx >= min_rank and score[row_idx] <= accuracy * accuracy:
             break
 
-        I[k] = i
-        S[i] = 0
+        row_indices[col_idx] = row_idx
+        selectable_mask[row_idx] = 0
 
-        v = B.dot(B[i])
-        l = 1. / (1 + v[i])
-        B = np.hstack([B - l * np.outer(v, B[i]), l * v.reshape(-1, 1)])
-        F = S * (F - l * v * v)
+        v_vec = coeff_matrix.dot(coeff_matrix[row_idx])
+        lambda_factor = 1.0 / (1.0 + v_vec[row_idx])
 
-    I = I[:B.shape[1]]
-    B[I] = np.eye(B.shape[1], dtype=B.dtype)
+        coeff_matrix = np.hstack(
+            [
+                coeff_matrix - lambda_factor * np.outer(v_vec, coeff_matrix[row_idx]),
+                (lambda_factor * v_vec).reshape(-1, 1),
+            ]
+        )
 
-    return I, B
+        score = selectable_mask * (score - lambda_factor * v_vec * v_vec)
+
+    # Trim unused columns
+    row_indices = row_indices[: coeff_matrix.shape[1]]
+
+    # Normalize: selected rows form identity
+    coeff_matrix[row_indices] = np.eye(coeff_matrix.shape[1], dtype=coeff_matrix.dtype)
+
+    return row_indices, coeff_matrix
