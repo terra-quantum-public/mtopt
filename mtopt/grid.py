@@ -1,193 +1,755 @@
-"""
-Docstring
+r"""
+Grid utilities for tensor rank cross and matrix train optimizers.
+
+This module defines a small :class:`Grid` class and helper routines to build
+and manipulate product grids associated with tensor-network structures.
+
+A :class:`Grid` is represented by:
+
+* a 2D array ``grid`` of shape ``(n_points, n_coords)``, where each row is a
+  point in coordinate space;
+* a 1D array ``coords`` of length ``n_coords`` describing which logical
+  coordinates (dimensions) each column corresponds to.
+
+The main operations provided are:
+
+* Cartesian products of grids via the matrix-multiplication operator
+  (``grid_a @ grid_b``),
+* direct sums of grids,
+* propagation of grids on a tensor network graph (node and edge grids),
+* selection of subgrids and random subsets,
+* a numerically stable Tikhonov-regularized inverse used in TT-cross-like
+  algorithms, and
+* a ``maxvol_grids`` helper combining grids with a max-volume submatrix
+  selection.
+
+The core numerical work relies on :mod:`numpy`. Graph operations assume a
+NetworkX-like interface but do not depend on a specific graph implementation.
+
 This code has been taken and adapted from the PyQuTree package authored by Roman Ellerbrock.
 """
 
+from __future__ import annotations
+
+from typing import Any, Iterable, List, Sequence, Tuple, Union
+
 import numpy as np
 
-from tensor import *
-from network import *
-from maxvol import maxvol
+from mtopt.maxvol import maxvol
+from mtopt.tensor import Tensor
+from mtopt.network import (
+    is_leaf_node,
+    collect,
+    up_leaves,
+    sweep,
+    pre_edges,
+    flip,
+)
 
-def _cartesian_product(A, B):
-    return np.array([[*a, *b] for a in A for b in B])
+
+__all__ = [
+    "Grid",
+    "cartesian_product",
+    "direct_sum",
+    "build_node_grid",
+    "tn_grid",
+    "transform_node_grid",
+    "regularized_inverse",
+    "maxvol_grids",
+]
+
+
+def _cartesian_product(grid_1: np.ndarray, grid_2: np.ndarray) -> np.ndarray:
+    r"""
+    Compute the Cartesian product of two 2D grids.
+
+    Given two grids ``grid_1`` and ``grid_2`` with shapes ``(n_1, d_1)`` and
+    ``(n_2, d_2)``, this returns a grid ``product`` with shape
+    ``(n_1 * n_2, d_1 + d_2)`` whose rows are all concatenated pairs
+    of rows from ``grid_1`` and ``grid_2``::
+
+        product = [ [grid_1[0], grid_2[0]],
+                    [grid_1[0], grid_2[1]],
+                    ...
+                    [grid_1[n_1-1], grid_2[n_2-1]] ]
+
+    implemented in a fully vectorized way.
+
+    Parameters
+    ----------
+    grid_1, grid_2 :
+        Input grids as 2D arrays.
+
+    Returns
+    -------
+    ndarray
+        Cartesian product grid as a 2D array.
+
+    Raises
+    ------
+    ValueError
+        If ``grid_1`` or ``grid_2`` is not 2-dimensional.
+    """
+    grid_1 = np.asarray(grid_1)
+    grid_2 = np.asarray(grid_2)
+
+    if grid_1.ndim != 2 or grid_2.ndim != 2:
+        raise ValueError(
+            "_cartesian_product expects 2D arrays, got shapes "
+            f"{grid_1.shape} and {grid_2.shape}."
+        )
+
+    n_1, d_1 = grid_1.shape
+    n_2, d_2 = grid_2.shape
+
+    # Broadcast to (n_1, n_2, d_1) and (n_1, n_2, d_2)
+    grid_1_expanded = grid_1[:, np.newaxis, :]  # (n_1, 1, d_1)
+    grid_2_expanded = grid_2[np.newaxis, :, :]  # (1, n_2, d_2)
+
+    grid_1_tiled = np.broadcast_to(grid_1_expanded, (n_1, n_2, d_1))
+    grid_2_tiled = np.broadcast_to(grid_2_expanded, (n_1, n_2, d_2))
+
+    product = np.concatenate((grid_1_tiled, grid_2_tiled), axis=2)  # (n_1, n_2, d_1 + d_2)
+    return product.reshape(n_1 * n_2, d_1 + d_2)
+
 
 class Grid:
-    def __init__(self, grid, coords):
+    r"""
+    Finite product grid over a set of coordinates.
+
+    A :class:`Grid` stores a collection of points in a coordinate space
+    together with the logical coordinate indices/labels for each column.
+
+    Parameters
+    ----------
+    grid :
+        Array-like object describing the grid points. If 1D, it is reshaped
+        to ``(n_points, 1)``. If 2D, the shape is interpreted as
+        ``(n_points, n_coords)``.
+    coords :
+        Coordinate indices or labels corresponding to the columns of ``grid``.
+        If an integer is given, it is converted to a one-element array. If an
+        array-like, it is converted to a 1D :class:`numpy.ndarray`.
+
+    Attributes
+    ----------
+    grid : ndarray
+        Grid points as a 2D array of shape ``(n_points, n_coords)``.
+    coords : ndarray
+        Coordinate labels as a 1D array of length ``n_coords``.
+    permutation : ndarray
+        A permutation of ``range(n_coords)`` indicating how coordinates
+        should be reordered to achieve a canonical ordering (e.g. sorted).
+
+    Raises
+    ------
+    ValueError
+        If ``grid`` is not 1D or 2D, or if the number of columns in ``grid``
+        does not match the length of ``coords``.
+    """
+
+    def __init__(
+        self,
+        grid: Union[np.ndarray, Sequence[Sequence[float]], Sequence[float]],
+        coords: Union[int, Sequence[int], np.ndarray],
+    ) -> None:
+        # Normalize grid to a 2D numpy array.
         if not isinstance(grid, np.ndarray):
             grid = np.array(grid)
-        if len(grid.shape) == 1:
-            grid = grid.reshape(-1, 1)
-        if len(grid.shape) != 2:
-            raise ValueError("Grid must be a 2D array.")
-        self.grid = np.array(grid)
 
+        if grid.ndim == 1:
+            grid = grid.reshape(-1, 1)
+        if grid.ndim != 2:
+            raise ValueError("Grid must be a 2D array.")
+
+        self.grid: np.ndarray = np.array(grid)
+
+        # Normalize coords to a 1D numpy array.
         if isinstance(coords, int):
             coords = [coords]
         if not isinstance(coords, np.ndarray):
             coords = np.array(coords)
-        self.coords = coords
+        self.coords: np.ndarray = coords
 
-        if grid.shape[1] != coords.shape[0]:
-            raise ValueError("Number of columns in grid must match the number of rows in coords.")
+        if self.grid.shape[1] != self.coords.shape[0]:
+            raise ValueError(
+                "Number of columns in grid must match the length of coords "
+                f"(got {self.grid.shape[1]} vs {self.coords.shape[0]})."
+            )
 
-        self.permutation = np.argsort(self.coords)
+        # Permutation that sorts coords (used by permute()).
+        self.permutation: np.ndarray = np.argsort(self.coords)
 
-    def __matmul__(self, other):
+    # ------------------------------------------------------------------
+    # Basic properties and representations
+    # ------------------------------------------------------------------
+    def __str__(self) -> str:  # pragma: no cover - cosmetic
+        r"""
+        String representation listing coordinates and underlying grid.
+        """
+        return f"coords: {self.coords}\ngrid:\n{self.grid}"
+
+    def __repr__(self) -> str:  # pragma: no cover - cosmetic
+        return f"Grid(shape={self.grid.shape}, coords={self.coords})"
+
+    # ------------------------------------------------------------------
+    # Core operations
+    # ------------------------------------------------------------------
+    def __matmul__(self, other: "Grid") -> "Grid":
+        r"""
+        Cartesian product of two grids via the ``@`` operator.
+
+        Parameters
+        ----------
+        other :
+            Another :class:`Grid` instance.
+
+        Returns
+        -------
+        Grid
+            New :class:`Grid` whose points are the Cartesian product of
+            ``self.grid`` and ``other.grid`` and whose coordinates are the
+            concatenation of ``self.coords`` and ``other.coords``.
+
+        Raises
+        ------
+        TypeError
+            If ``other`` is not a :class:`Grid` instance.
+        """
+        if not isinstance(other, Grid):
+            raise TypeError(f"Grid.__matmul__ expects Grid, got {type(other)!r}.")
+
         new_grid = _cartesian_product(self.grid, other.grid)
         new_coords = np.concatenate((self.coords, other.coords))
         return Grid(new_grid, new_coords)
 
-    def permute(self):
+    def permute(self) -> "Grid":
+        r"""
+        Return a new grid with coordinates sorted according to ``coords``.
+
+        This method reorders the columns of :attr:`grid` and the entries
+        of :attr:`coords` according to :attr:`permutation`. The resulting
+        grid has coordinates in sorted order. Its :attr:`permutation`
+        attribute is set to the inverse permutation, which can be used
+        elsewhere to restore the original order if needed.
+
+        Returns
+        -------
+        Grid
+            New :class:`Grid` instance with permuted columns and coordinates.
+        """
         new_grid = self.grid[:, self.permutation]
         new_coords = self.coords[self.permutation]
         G = Grid(new_grid, new_coords)
         G.permutation = np.argsort(self.permutation)
         return G
 
-    def __str__(self):
-        output = "coords: {}\ngrid:\n{}".format(self.coords, self.grid)
-        return output
+    def random_subset(self, n: int) -> "Grid":
+        r"""
+        Return a random subset of grid points.
 
-    def random_subset(self, n):
+        Parameters
+        ----------
+        n :
+            Desired number of points in the subset. If ``n`` exceeds the
+            total number of points, all points are returned.
+
+        Returns
+        -------
+        Grid
+            New :class:`Grid` containing at most ``n`` randomly chosen
+            rows of :attr:`grid`, with the same :attr:`coords`.
+        """
         m = min(n, self.grid.shape[0])
         idx = np.random.choice(self.grid.shape[0], m, replace=False)
         return Grid(self.grid[idx], self.coords)
 
-    def __getitem__(self, idx):
+    def __getitem__(
+        self,
+        idx: Union[int, slice, np.ndarray, List[int], Tuple[Any, Any]],
+    ) -> "Grid":
+        r"""
+        Extract a subgrid by indexing.
+
+        Indexing behavior is tailored to grid semantics:
+
+        * ``grid[i]`` (integer) selects row ``i`` (a single point) and
+          returns a grid with shape ``(1, n_coords)``.
+        * ``grid[:, columns]`` or ``grid[columns]`` (non-integer) selects
+          a subset of coordinates (columns).
+        * ``grid[rows, columns]`` selects both a subset of rows and a
+          subset of columns.
+
+        Parameters
+        ----------
+        idx :
+            Index or index tuple. If a tuple, it must be of length 2 and
+            interpreted as ``(rows, columns)`` for standard 2D indexing.
+
+        Returns
+        -------
+        Grid
+            New :class:`Grid` containing the selected subgrid.
+
+        Raises
+        ------
+        ValueError
+            If a tuple index does not have length 2.
+        """
+        # 2D indexing: (rows, cols)
         if isinstance(idx, tuple):
             if len(idx) != 2:
-                raise ValueError("Index must be a tuple of two integers.")
-            grid = self.grid[idx[0], idx[1]]
-            coords = self.coords[idx[1]]
+                raise ValueError("Index must be a tuple of two indices.")
+            row_idx, col_idx = idx
+            grid = self.grid[row_idx, col_idx]
+            coords = self.coords[col_idx]
+
+            grid = np.array(grid)
+            coords = np.array(coords)
+
+            # Ensure coords is 1D
+            if coords.ndim == 0:
+                coords = coords.reshape(1)
+
+            # Normalize grid to 2D:
+            if grid.ndim == 0:
+                # Single scalar -> 1x1
+                grid = grid.reshape(1, 1)
+            elif grid.ndim == 1:
+                # One dimension collapsed: decide whether it's a row or column
+                if isinstance(col_idx, (int, np.integer)):
+                    # One column, multiple rows -> column vector
+                    grid = grid.reshape(-1, 1)
+                else:
+                    # One row, multiple columns -> row vector
+                    grid = grid.reshape(1, -1)
+
             return Grid(grid, coords)
-        if not isinstance(idx, int):
-            grid = self.grid[:, idx]
-            coords = self.coords[idx]
-            return Grid(grid, coords)
-        grid = self.grid[idx]
-        return Grid(grid, self.coords)
-    
-    def evaluate(self, func, **kwargs):
+
+        # 1D indexing:
+        if isinstance(idx, (int, np.integer)):
+            # Select a single row (point), keep all coordinates
+            grid = np.array(self.grid[idx])
+            if grid.ndim == 1:
+                grid = grid.reshape(1, -1)
+            return Grid(grid, self.coords)
+
+        # Non-integer 1D index: select columns (coordinates)
+        grid = np.array(self.grid[:, idx])
+        coords = np.array(self.coords[idx])
+
+        if grid.ndim == 1:
+            grid = grid.reshape(-1, 1)
+        if coords.ndim == 0:
+            coords = coords.reshape(1)
+
+        return Grid(grid, coords)
+
+    def evaluate(self, func, **kwargs) -> np.ndarray:
+        r"""
+        Evaluate a function on each grid point.
+
+        Parameters
+        ----------
+        func :
+            Callable with signature ``f(point, *args, **kwargs)`` taking a
+            1D array (a row of :attr:`grid`) and returning a scalar or
+            array-like value.
+        **kwargs :
+            Additional keyword arguments forwarded to ``func`` via
+            :func:`numpy.apply_along_axis`.
+
+        Returns
+        -------
+        ndarray
+            Array of function values, with shape determined by
+            :func:`numpy.apply_along_axis`.
+        """
         return np.apply_along_axis(func, 1, self.grid, **kwargs)
-    
-    def transform(self, func):
-        return Grid(np.apply_along_axis(func, 1, self.grid), self.coords)
-    
-    def __add__(self, other):
+
+    def transform(self, func) -> "Grid":
+        r"""
+        Apply a pointwise transformation to the grid.
+
+        Parameters
+        ----------
+        func :
+            Callable with signature ``f(point)`` taking a 1D array and
+            returning a transformed 1D array of the same length.
+
+        Returns
+        -------
+        Grid
+            New :class:`Grid` whose points are obtained by applying
+            ``func`` to each row of :attr:`grid`, with the same
+            :attr:`coords`.
+        """
+        new_grid = np.apply_along_axis(func, 1, self.grid)
+        return Grid(new_grid, self.coords)
+
+    def __add__(self, other: "Grid") -> "Grid":
+        r"""
+        Direct sum (row-wise concatenation) of two grids.
+
+        Parameters
+        ----------
+        other :
+            Another :class:`Grid` with the same coordinates.
+
+        Returns
+        -------
+        Grid
+            New :class:`Grid` containing all points from both grids.
+
+        Raises
+        ------
+        ValueError
+            If the coordinate sets differ.
+        """
         if len(self.coords) != len(other.coords):
             raise ValueError("Number of coordinates does not match.")
-        if self.coords.all() != other.coords.all():
-            raise ValueError("Coordinates do not match: ", self.coords, " | ", other.coords, ".")
-        return Grid(np.concatenate((self.grid, other.grid), axis=0), self.coords)
-    
-    def shape(self):
+
+        if not np.array_equal(self.coords, other.coords):
+            raise ValueError(
+                f"Coordinates do not match: {self.coords} | {other.coords}."
+            )
+
+        combined = np.concatenate((self.grid, other.grid), axis=0)
+        return Grid(combined, self.coords)
+
+    # ------------------------------------------------------------------
+    # Small helpers
+    # ------------------------------------------------------------------
+    def shape(self) -> Tuple[int, int]:
+        r"""
+        Return the shape of the underlying grid array.
+
+        Returns
+        -------
+        tuple of int
+            ``(n_points, n_coords)``.
+        """
         return self.grid.shape
-    
-    def num_points(self):
+
+    def num_points(self) -> int:
+        r"""
+        Number of points (rows) in the grid.
+
+        Returns
+        -------
+        int
+            Number of rows in :attr:`grid`.
+        """
         return self.shape()[0]
-    
-    def num_coords(self):
+
+    def num_coords(self) -> int:
+        r"""
+        Number of coordinates (columns) in the grid.
+
+        Returns
+        -------
+        int
+            Number of columns in :attr:`grid`.
+        """
         return self.shape()[1]
 
-def cartesian_product(grids):
+
+# ----------------------------------------------------------------------
+# Grid combinations and TN grid construction
+# ----------------------------------------------------------------------
+def cartesian_product(grids: Sequence[Grid]) -> Grid:
+    r"""
+    Compute the Cartesian product of a sequence of grids.
+
+    This is defined recursively via the ``@`` operator on :class:`Grid`
+    instances and is equivalent to applying :func:`_cartesian_product`
+    pairwise.
+
+    Parameters
+    ----------
+    grids :
+        Sequence of :class:`Grid` objects.
+
+    Returns
+    -------
+    Grid
+        Single :class:`Grid` representing the Cartesian product of all
+        input grids.
+    """
     if len(grids) == 1:
         return grids[0]
     return grids[0] @ cartesian_product(grids[1:])
 
-def direct_sum(grids):
+
+def direct_sum(grids: Sequence[Grid]) -> Grid:
+    r"""
+    Compute the direct sum (row-wise concatenation) of a sequence of grids.
+
+    Parameters
+    ----------
+    grids :
+        Sequence of :class:`Grid` objects.
+
+    Returns
+    -------
+    Grid
+        Single :class:`Grid` containing all points from all input grids.
+    """
     if len(grids) == 1:
         return grids[0]
     return grids[0] + direct_sum(grids[1:])
 
-def build_node_grid(G):
-    for node in G.nodes:
-        if is_leaf_node(node, G):
+
+def build_node_grid(graph: Any) -> None:
+    r"""
+    Build and attach node grids based on incident edge grids.
+
+    For each non-leaf node in the tensor network graph ``G``, this function
+    collects the grids associated with its incoming edges, forms their
+    Cartesian product, and stores the resulting grid under
+    ``G.nodes[node]["grid"]``.
+
+    Parameters
+    ----------
+    graph :
+        Tensor-network-like graph object. It is expected to provide:
+
+        * ``graph.nodes`` (node attribute mapping),
+        * ``graph.in_edges(node)`` (incoming edges iterator),
+        * ``is_leaf_node(node, graph)`` helper, and
+        * :func:`collect` to gather edge attributes.
+    """
+    for node in graph.nodes:
+        if is_leaf_node(node, graph):
             continue
-        edges = G.in_edges(node)
-        pre_grids = collect(G, edges, 'grid')
+        edges = graph.in_edges(node)
+        pre_grids: List[Grid] = collect(graph, edges, "grid")
         grid = cartesian_product(pre_grids).permute()
-        G.nodes[node]['grid'] = grid
+        graph.nodes[node]["grid"] = grid
 
-def tn_grid(G, primitive_grid, start_grid = None):
+
+def tn_grid(
+    graph: Any,
+    primitive_grid: Sequence[np.ndarray],
+    start_grid: np.ndarray | None = None,
+) -> Any:
+    r"""
+    Initialize random edge and node grids on a tensor network graph.
+
+    For each leaf edge, a :class:`Grid` is built from the corresponding
+    primitive grid. For internal edges, grids are constructed as random
+    subsets of Cartesian products of predecessor edge grids. Finally,
+    node grids are built via :func:`build_node_grid`.
+
+    Parameters
+    ----------
+    graph :
+        Tensor-network-like graph object. Expected to support the helpers
+        :func:`up_leaves`, :func:`sweep`, :func:`pre_edges`, and
+        :func:`collect`, and to carry edge attributes ``"coordinate"`` and
+        ``"r"``.
+    primitive_grid :
+        Sequence of primitive grids, one per coordinate. ``primitive_grid[k]``
+        must be indexable and suitable as input to :class:`Grid` for
+        coordinate ``k``.
+    start_grid :
+        Optional 2D array providing an initial global grid to be sampled
+        instead of random selection. Must satisfy
+        ``start_grid.shape[0] >= r`` for all edge ranks ``r`` used in the
+        network. If provided, the rows of ``start_grid`` are used in the
+        order implied by ``next_grid.coords``.
+
+    Returns
+    -------
+    graph :
+        The same graph object with additional ``"grid"`` attributes attached
+        to edges and nodes.
     """
-    Initialize a random tn grid
-    G: tensor network
-    grids: list of grids for each coordinate
-    """
+    # Leaf edge grids
+    for leaf in sorted(up_leaves(graph)):
+        coord = graph.edges[leaf]["coordinate"]
+        graph.edges[leaf]["grid"] = Grid(primitive_grid[coord], coord)
 
-    for leaf in sorted(up_leaves(G)):
-        coord = G.edges[leaf]['coordinate']
-        G.edges[leaf]['grid'] = Grid(primitive_grid[coord], coord)
-
-    for edge in sweep(G, False):
-        r = G.edges[edge]['r']
-        pre = pre_edges(G, edge, remove_flipped=True)
-        pre_grids = collect(G, pre, 'grid')
+    # Internal edge grids
+    for edge in sweep(graph, forward=False):
+        r = graph.edges[edge]["r"]
+        pre = pre_edges(graph, edge, remove_flipped=True)
+        pre_grids: List[Grid] = collect(graph, pre, "grid")
         next_grid = cartesian_product(pre_grids).random_subset(r)
+
         if start_grid is not None:
-            assert start_grid.shape[0] >= r
+            if start_grid.shape[0] < r:
+                raise ValueError(
+                    f"start_grid must have at least r={r} rows, "
+                    f"got {start_grid.shape[0]}."
+                )
+            # Align columns with the coordinate order of next_grid
             next_grid.grid = start_grid[:r, next_grid.coords]
-        G.edges[edge]['grid'] = next_grid
 
-    build_node_grid(G)
-    return G
+        graph.edges[edge]["grid"] = next_grid
 
-def transform_node_grid(G, q_to_x):
-    for node in G.nodes:
+    build_node_grid(graph)
+    return graph
+
+def transform_node_grid(graph: Any, q_to_x) -> Any:
+    r"""
+    Apply a pointwise transformation to node grids.
+
+    Parameters
+    ----------
+    graph :
+        Tensor-network-like graph object with node attribute ``"grid"``.
+    q_to_x :
+        Callable mapping a grid point (1D array) to another 1D array of
+        the same length. It is passed to :meth:`Grid.transform`.
+
+    Returns
+    -------
+    graph :
+        The same graph object with transformed node grids.
+    """
+    for node in graph.nodes:
         if node < 0:
+            # Conventionally skip "virtual" / auxiliary nodes
             continue
-        G.nodes[node]['grid'] = G.nodes[node]['grid'].transform(q_to_x)
-    return G
+        graph.nodes[node]["grid"] = graph.nodes[node]["grid"].transform(q_to_x)
+    return graph
 
-def regularized_inverse(A: np.ndarray, lambda_reg: float, eps: float = 1e-15) -> np.ndarray:
+
+# ----------------------------------------------------------------------
+# Linear algebra helpers
+# ----------------------------------------------------------------------
+def regularized_inverse(
+    matrix: np.ndarray,
+    lambda_reg: float,
+    eps: float = 1e-15,
+) -> np.ndarray:
+    r"""
+    Tikhonov-regularized inverse of a matrix via SVD.
+
+    We compute a stabilized pseudo-inverse of ``matrix`` using
+
+    .. math::
+
+        \sigma_\text{inv} = \frac{\sigma}{\sigma^2 + \alpha},
+
+    where :math:`\sigma` are the singular values of ``matrix`` and
+
+    .. math::
+
+        \alpha = (\lambda_\text{eff} \cdot \sigma_{\max})^2, \quad
+        \lambda_\text{eff} = \max(\lambda_\text{reg}, \varepsilon).
+
+    The denominator is clamped to be at least ``eps`` to avoid
+    division by zero or overflow, and all computations are carried
+    out in double precision.
+
+    Parameters
+    ----------
+    matrix :
+        Input matrix of shape ``(m, n)``.
+    lambda_reg :
+        Regularization parameter :math:`\lambda_\text{reg}`. If non-finite
+        or non-positive, it is replaced by ``eps``.
+    eps :
+        Small positive number used as a lower bound for both
+        :math:`\lambda_\text{eff}` and the denominator.
+
+    Returns
+    -------
+    ndarray
+        Regularized inverse of shape ``(n, m)``. If ``matrix`` has no singular
+        values (empty spectrum), a zero matrix of the appropriate shape
+        is returned.
     """
-    Tikhonov-regularized inverse via SVD:
-      sigma_inv = s / (s^2 + alpha),  with  alpha = (lambda_eff * s_max)^2
-    where lambda_eff = max(lambda_reg, eps). Denominator is clamped to >= eps.
-    This prevents divide-by-zero/overflow and stays stable even if s_max <= 0.
-    """
-    U, sigma, VT = np.linalg.svd(A, full_matrices=False)
+    U, sigma, VT = np.linalg.svd(matrix, full_matrices=False)
+
     # Ensure float64 for stability
     U = U.astype(np.float64, copy=False)
     sigma = sigma.astype(np.float64, copy=False)
     VT = VT.astype(np.float64, copy=False)
 
     if sigma.size == 0:
-        # Empty spectrum: return shape-consistent zero inverse
-        return np.zeros_like(A.T, dtype=np.float64)
+        # Empty spectrum: return shape-consistent zero "inverse"
+        return np.zeros_like(matrix.T, dtype=np.float64)
 
-    s_max = float(np.max(sigma))  # safer than sigma[0] if SVD ordering ever changes
-    # Enforce strictly positive regularization
+    s_max = float(np.max(sigma))
     lam = float(lambda_reg)
+
+    # Enforce strictly positive, finite regularization
     if not np.isfinite(lam) or lam <= 0.0:
         lam = eps
 
-    # If s_max is non-positive or non-finite, still produce a positive alpha
     if not np.isfinite(s_max) or s_max <= 0.0:
         alpha = lam * lam
     else:
         alpha = (lam * s_max) ** 2
 
-    # Denominator, safely clamped away from zero
     denom = sigma * sigma + alpha
     denom = np.where(denom <= eps, eps, denom)
 
-    sigma_inv = sigma / denom  # guaranteed finite
+    sigma_inv = sigma / denom
 
-    # A_inv = V * diag(sigma_inv) * U^T
+    # matrix_inv = V * diag(sigma_inv) * U^T
     return (VT.T * sigma_inv) @ U.T
 
-def maxvol_grids(A, G, edge):
-    pre = pre_edges(G, edge, remove_flipped=True)
-    grid_L = collect(G, pre, 'grid')
-    grid_L = cartesian_product(grid_L)
 
-    mat = A.flatten(edge)
+def maxvol_grids(
+    tensor: "Tensor",
+    graph: Any,
+    edge: Iterable[Any],
+) -> Tuple[Grid, Any]:
+    r"""
+    Perform a max-volume selection on a tensor flattened along an edge.
+
+    This helper:
+
+    1. Builds the left grid by taking the Cartesian product of the grids
+       on the predecessor edges of ``edge``.
+    2. Flattens the tensor ``tensor`` along ``edge`` (using its
+       :meth:`flatten` method).
+    3. Runs :func:`maxvol` on the resulting matrix to select a subset of
+       rows with (approximately) maximal volume.
+    4. Computes a Tikhonov-regularized inverse of the selected cross
+       matrix and wraps it as a tensor via :class:`Tensor`.
+
+    Parameters
+    ----------
+    tensor :
+        Tensor-like object supporting ``tensor.flatten(edge)`` and resulting
+        in a 2D array whose rows correspond to the grid points in
+        the Cartesian product of predecessor grids.
+    graph :
+        Tensor-network-like graph object. Expected to provide the
+        helper :func:`pre_edges` and to store grids under edge attribute
+        ``"grid"``.
+    edge :
+        Edge label (or descriptor) along which ``tensor`` is flattened and
+        contracted.
+
+    Returns
+    -------
+    grid_L : Grid
+        Subgrid corresponding to the selected max-volume rows.
+    cross_inv : Tensor-like
+        Regularized inverse of the selected cross matrix, wrapped as a
+        tensor.
+
+    Notes
+    -----
+    The regularization strength in :func:`regularized_inverse` is
+    currently hard-coded to ``1e-12`` for numerical stability.
+    """
+    pre = pre_edges(graph, edge, remove_flipped=True)
+    grid_L_list: List[Grid] = collect(graph, pre, "grid")
+    grid_L = cartesian_product(grid_L_list)
+
+    mat = tensor.flatten(edge)
 
     rows, _ = maxvol(mat)
 
-    # compute cross matrix inverse
-    cross_inv = regularized_inverse(mat[rows, :], 1e-12)
-    cross_inv = quTensor(cross_inv, [edge, flip(edge)])
+    # Compute cross matrix inverse
+    cross_inv_mat = regularized_inverse(mat[rows, :], lambda_reg=1e-12)
+    cross_inv = Tensor(cross_inv_mat, [edge, flip(edge)])
+
     return grid_L[rows, :], cross_inv
