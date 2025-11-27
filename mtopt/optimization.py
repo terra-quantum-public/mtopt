@@ -84,7 +84,7 @@ def evaluate_grid(grid: Grid, function: Callable, dim2: int, **kwargs) -> np.nda
     return vmat.reshape(dim1, dim2).T
 
 
-def random_points(primitive_grid: list[Grid], r: int, seed:int=42) -> np.ndarray:
+def random_points(primitive_grid: list[Grid], r: int, seed: int = 42) -> np.ndarray:
     """
     Sample r random points from each 1D primitive, returning an (r x f) array.
     """
@@ -96,7 +96,7 @@ def random_points(primitive_grid: list[Grid], r: int, seed:int=42) -> np.ndarray
     return np.array(x).T
 
 
-def random_grid_points(primitive_grids: list[Grid], r: int, seed:int=42) -> Grid:
+def random_grid_points(primitive_grids: list[Grid], r: int, seed: int = 42) -> Grid:
     """
     Sample r unique points from the full Cartesian product of f primitives.
 
@@ -104,17 +104,16 @@ def random_grid_points(primitive_grids: list[Grid], r: int, seed:int=42) -> Grid
       Grid of shape (r x f) with coords [0..f-1].
     """
     random.seed(seed)
+
     def unique_integer_arrays(r, N, f):
         if r > N**f:
             raise ValueError("Not enough unique combos.")
-        return np.array(random.sample(
-            list(itertools.product(range(N), repeat=f)), r))
+        return np.array(random.sample(list(itertools.product(range(N), repeat=f)), r))
 
     def indices_to_grid_points(idxs, grids):
-        return np.array([
-            [grids[d].grid[i, 0] for d, i in enumerate(pt)]
-            for pt in idxs
-        ])
+        return np.array(
+            [[grids[d].grid[i, 0] for d, i in enumerate(pt)] for pt in idxs]
+        )
 
     f = len(primitive_grids)
     N = primitive_grids[0].grid.shape[0]
@@ -249,8 +248,7 @@ def column_labels(matrix: np.ndarray) -> np.ndarray:
 
 
 def greedy_with_group_assignment(
-    matrix: np.ndarray,
-    groups: np.ndarray
+    matrix: np.ndarray, groups: np.ndarray
 ) -> tuple[list[int], list[int]]:
     """
     Run linear assignment poblem solver separately for each group of columns.
@@ -274,11 +272,7 @@ def greedy_with_group_assignment(
 
 
 def group_assignment(
-    grid: Grid,
-    function: Callable,
-    groups: np.ndarray,
-    r: int,
-    **kwargs
+    grid: Grid, function: Callable, groups: np.ndarray, r: int, **kwargs
 ):
     """
     Grouped selection: select one row per column group via greedy_with_group_assignment.
@@ -295,10 +289,7 @@ def group_assignment(
 
 
 def variation_update(
-    grid: Grid,
-    replacement_grid: Grid,
-    function: Callable,
-    **kwargs
+    grid: Grid, replacement_grid: Grid, function: Callable, **kwargs
 ) -> tuple[Grid, np.ndarray]:
     """
     One cross-update on a single physical leg:
@@ -307,14 +298,13 @@ def variation_update(
     """
     ngrid, a = create_mutations(grid, replacement_grid)
     groups = column_labels(a.grid.T)
-    return group_assignment(ngrid, function, groups, replacement_grid.num_points(), **kwargs)
+    return group_assignment(
+        ngrid, function, groups, replacement_grid.num_points(), **kwargs
+    )
 
 
 def recombination_update(
-    grid: Grid,
-    idxs: list[int],
-    function: Callable,
-    **kwargs
+    grid: Grid, idxs: list[int], function: Callable, **kwargs
 ) -> tuple[Grid, np.ndarray]:
     """
     Recombine two subsets via max-volume selection.
@@ -324,10 +314,7 @@ def recombination_update(
 
 
 def recombination_update_assignment(
-    grid: Grid,
-    left_block_cols: list[int],
-    function: Callable,
-    **kwargs
+    grid: Grid, left_block_cols: list[int], function: Callable, **kwargs
 ):
     """
     Recombine two blocks A (columns=left_block_cols) and B (the rest).
@@ -339,7 +326,9 @@ def recombination_update_assignment(
       new_grid, vmat  with vmat.shape == (r, r)
     """
     ngrid = recombination(grid, left_block_cols)  # r^2 x f
-    new_grid, vmat = assignment_selection(ngrid, function, dim2=grid.num_points(), **kwargs)
+    new_grid, vmat = assignment_selection(
+        ngrid, function, dim2=grid.num_points(), **kwargs
+    )
     return new_grid, vmat
 
 
@@ -351,7 +340,7 @@ class TensorRankOptimization(Model):
     Args:
       primitive_grids: list of f Grids, one per each dimension.
       r: Number of cross-pivots (rank).
-    
+
     After a sweep, returns:
         grid: Updated Grid of shape (r x f).
         vmat: Evaluation matrix of shape (r x f).
@@ -374,7 +363,9 @@ class TensorRankOptimization(Model):
         vmat = None
         f = grid.num_coords()
         for k in range(f):
-            grid, vmat = variation_update(grid, self.primitive_grids[k], function, epoch=epoch)
+            grid, vmat = variation_update(
+                grid, self.primitive_grids[k], function, epoch=epoch
+            )
         return grid, vmat
 
 
@@ -410,15 +401,23 @@ class MatrixTrainOptimization(Model):
         f = grid.num_coords()
 
         for k in range(min(2, f)):
-            grid, _ = variation_update(grid, self.primitive_grids[k], function, epoch=epoch)
+            grid, _ = variation_update(
+                grid, self.primitive_grids[k], function, epoch=epoch
+            )
 
-        for k in range(2, f-1):
+        for k in range(2, f - 1):
             left_block = list(range(k))
-            grid, vmat    = recombination_update_assignment(grid, left_block, function, epoch=epoch)
-            grid, vmat = variation_update(grid, self.primitive_grids[k], function, epoch=epoch)
+            grid, vmat = recombination_update_assignment(
+                grid, left_block, function, epoch=epoch
+            )
+            grid, vmat = variation_update(
+                grid, self.primitive_grids[k], function, epoch=epoch
+            )
 
-        if f>3:
-            for k in range(f-1, f):
-                grid, vmat = variation_update(grid, self.primitive_grids[k], function, epoch=epoch)
+        if f > 3:
+            for k in range(f - 1, f):
+                grid, vmat = variation_update(
+                    grid, self.primitive_grids[k], function, epoch=epoch
+                )
 
         return grid, vmat
