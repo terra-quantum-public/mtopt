@@ -1,318 +1,915 @@
-"""
-Docstring
-This code has been taken and adapted from the PyQuTree package authored by Roman Ellerbrock.
+r"""
+Graph utilities for tensor-network structures.
+
+This module provides helper routines for working with tensor-network graphs
+represented as :class:`networkx.DiGraph` objects. It is adapted from the
+PyQuTree package by Roman Ellerbrock.
+
+The conventions used here are:
+
+* The graph is a directed tree (or tree-like) structure.
+* Physical degrees of freedom are represented by *leaf nodes* with
+  negative indices, connected bidirectionally to their parent *core* node.
+* Edges may carry attributes such as
+
+  - ``"coordinate"`` – index of the physical coordinate,
+  - ``"r"`` – rank associated with the edge in tensor-train/tree formats.
+
+The module includes:
+
+* Generic navigation helpers (:func:`sweep`, :func:`up_leaves`,
+  :func:`pre_edges`, :func:`children`, etc.).
+* Utilities to remove edges and add layer indices.
+* Constructors for common tensor-network architectures:
+
+  - :func:`tensor_train_graph`
+  - :func:`tensor_train_operator_graph`
+  - :func:`balanced_tree`
 """
 
+from __future__ import annotations
+
+from typing import Any, Iterable, List, Sequence, Tuple
 
 import networkx as nx
 import numpy as np
 
-def pre_edges(G, edge, remove_flipped = False):
-    pre = list(G.in_edges(edge[0]))
+
+__all__ = [
+    "pre_edges",
+    "is_leaf",
+    "is_leaf_node",
+    "up_edge",
+    "flip",
+    "back_permutation",
+    "flatten_back",
+    "collect",
+    "up_edges_by_distance_to_root",
+    "sweep",
+    "up_sweep",
+    "rsweep",
+    "add_leaves",
+    "root",
+    "up_leaves",
+    "children",
+    "star_sweep",
+    "remove_edge",
+    "add_layer_index",
+    "tensor_train_graph",
+    "tensor_train_operator_graph",
+    "build_tree",
+    "balanced_tree",
+]
+
+
+# ---------------------------------------------------------------------
+# Local edge / node utilities
+# ---------------------------------------------------------------------
+
+
+def pre_edges(
+    graph: nx.DiGraph,
+    edge: Tuple[int, int],
+    remove_flipped: bool = False,
+) -> List[Tuple[int, int]]:
+    r"""
+    Return incoming edges into the source node of a given edge.
+
+    Parameters
+    ----------
+    graph :
+        Directed tensor-network graph.
+    edge :
+        Edge given as a pair ``(u, v)``.
+    remove_flipped :
+        If ``True``, the reversed edge ``(v, u)`` is removed from the list
+        of predecessors if present.
+
+    Returns
+    -------
+    list of tuple
+        List of incoming edges ``(w, u)`` with ``u = edge[0]``.
+    """
+    predecessors = list(graph.in_edges(edge[0]))
     if remove_flipped:
-        pre.remove(flip(edge))
-    return pre
+        flipped = flip(edge)
+        predecessors = [e for e in predecessors if e != flipped]
+    return predecessors
 
-def is_leaf(edge, G):
-    return G.in_degree(edge[0]) <= 1 or G.in_degree(edge[1]) <= 1
-#    return G.in_degree(edge[0]) == 0 or G.in_degree(edge[1]) == 0 # works only if leaves are added as (-i - 1, i) but not reverse
 
-def is_leaf_node(node, G):
-    return G.in_degree(node) <= 1 or G.in_degree(node) <= 1
+def is_leaf(edge: Tuple[int, int], graph: nx.DiGraph) -> bool:
+    r"""
+    Check whether an edge is a *leaf edge*.
 
-def up_edge(edge, G):
-    d0 = nx.shortest_path_length(G, source=edge[0], target=root(G))
-    d1 = nx.shortest_path_length(G, source=edge[1], target=root(G))
-    return d0 > d1
+    An edge is considered a leaf edge if at least one of its endpoints
+    has in-degree less than or equal to 1. In the standard constructions
+    used here, this corresponds to edges attached to physical leaf nodes.
 
-def flip(edge):
-    return (edge[1], edge[0])
+    Parameters
+    ----------
+    edge :
+        Edge ``(u, v)`` to test.
+    graph :
+        Directed tensor-network graph.
 
-def back_permutation(edges, edge):
-    el = edges.index(edge)
-    p = list(range(len(edges)))
-    p.remove(el)
-    p.append(el)
-    return p
-
-def flatten_back(A, shape):
-    return A.reshape((-1, shape[-1]))
-
-def collect(G, edges, key):
+    Returns
+    -------
+    bool
+        ``True`` if the edge is a leaf edge, ``False`` otherwise.
     """
-    Graph objects from edges that correspond to 'key' as a list
+    return graph.in_degree(edge[0]) <= 1 or graph.in_degree(edge[1]) <= 1
+
+
+def is_leaf_node(node: int, graph: nx.DiGraph) -> bool:
+    r"""
+    Check whether a node is a *leaf node*.
+
+    A leaf node is defined here as a node with in-degree less than or equal
+    to 1. For the standard tensor-network constructions in this module,
+    this picks out the physical nodes with negative indices.
+
+    Parameters
+    ----------
+    node :
+        Node index.
+    graph :
+        Directed tensor-network graph.
+
+    Returns
+    -------
+    bool
+        ``True`` if the node is a leaf node, ``False`` otherwise.
     """
-    items = []
+    return graph.in_degree(node) <= 1
+
+
+def up_edge(edge: Tuple[int, int], graph: nx.DiGraph) -> bool:
+    r"""
+    Determine if an edge is oriented *upward* towards the root.
+
+    We measure the shortest-path distance from each endpoint to the root
+    node and declare the edge to be "upward" if the source node is farther
+    away from the root than the target node.
+
+    Parameters
+    ----------
+    edge :
+        Edge ``(u, v)`` to test.
+    graph :
+        Directed tensor-network graph.
+
+    Returns
+    -------
+    bool
+        ``True`` if ``edge`` points from a deeper node to a shallower node
+        (towards the root), ``False`` otherwise.
+    """
+    root_node = root(graph)
+    distance_source = nx.shortest_path_length(graph, source=edge[0], target=root_node)
+    distance_target = nx.shortest_path_length(graph, source=edge[1], target=root_node)
+    return distance_source > distance_target
+
+
+def flip(edge: Tuple[int, int]) -> Tuple[int, int]:
+    r"""
+    Return the reversed (flipped) version of an edge.
+
+    Parameters
+    ----------
+    edge :
+        Edge ``(u, v)``.
+
+    Returns
+    -------
+    tuple
+        Flipped edge ``(v, u)``.
+    """
+    return edge[1], edge[0]
+
+
+def back_permutation(edges: Sequence[Any], edge: Any) -> List[int]:
+    r"""
+    Compute a permutation that moves a given edge label to the last position.
+
+    This is used, for example, when flattening a tensor along a specific
+    edge: the corresponding axis is moved to the back.
+
+    Parameters
+    ----------
+    edges :
+        Sequence of edge labels.
+    edge :
+        Edge label to be moved to the last position. Equality is tested
+        via ``==`` and the first occurrence is used.
+
+    Returns
+    -------
+    list of int
+        Permutation of ``range(len(edges))`` that moves ``edge`` to the end.
+
+    Raises
+    ------
+    ValueError
+        If ``edge`` is not found in ``edges``.
+    """
+    index = edges.index(edge)
+    perm = list(range(len(edges)))
+    perm.remove(index)
+    perm.append(index)
+    return perm
+
+
+def flatten_back(array: np.ndarray, shape: Tuple[int, ...]) -> np.ndarray:
+    r"""
+    Reshape a flattened array back to a tensor-like 2D view.
+
+    This helper is currently a thin wrapper around :meth:`numpy.ndarray.reshape`,
+    reshaping the input to ``(-1, shape[-1])``. It is intended to mirror
+    the layout produced by certain flattening operations.
+
+    Parameters
+    ----------
+    array :
+        Input array.
+    shape :
+        Original shape; only the last dimension is used here.
+
+    Returns
+    -------
+    ndarray
+        Reshaped array of shape ``(-1, shape[-1])``.
+    """
+    return array.reshape((-1, shape[-1]))
+
+
+def collect(
+    graph: nx.DiGraph,
+    edges: Iterable[Tuple[int, int]],
+    key: str,
+) -> List[Any]:
+    r"""
+    Collect an edge attribute from a list of edges.
+
+    Parameters
+    ----------
+    graph :
+        Directed tensor-network graph.
+    edges :
+        Iterable of edges ``(u, v)``.
+    key :
+        Edge attribute key to collect.
+
+    Returns
+    -------
+    list
+        List of attribute values ``graph.edges[e][key]`` for each edge ``e``.
+    """
+    items: List[Any] = []
     for e in edges:
-        items.append(G.edges[e][key])
+        items.append(graph.edges[e][key])
     return items
 
-def up_edges_by_distance_to_root(G, root):
-    distance = nx.shortest_path_length(G, source=root)
 
-    up_edges = [edge for edge in G.edges() if distance[edge[0]] > distance[edge[1]]]
-    down_edges = [edge for edge in G.edges() if distance[edge[0]] < distance[edge[1]]]
+# ---------------------------------------------------------------------
+# Sweeps and root-related utilities
+# ---------------------------------------------------------------------
 
-    sorted_up_edges = sorted(up_edges, key=lambda edge: -distance[edge[1]])
-    sorted_down_edges = sorted(down_edges, key=lambda edge: distance[edge[1]])
+
+def up_edges_by_distance_to_root(
+    graph: nx.DiGraph,
+    root_node: int,
+) -> Tuple[List[Tuple[int, int]], List[Tuple[int, int]]]:
+    r"""
+    Split edges into upward and downward sets by distance to root.
+
+    For each edge ``(u, v)``, we compare the shortest-path distances
+    ``dist[u]`` and ``dist[v]`` to the root. If ``dist[u] > dist[v]``,
+    the edge is considered *upward* (pointing towards the root). If
+    ``dist[u] < dist[v]``, it is considered *downward*.
+
+    Parameters
+    ----------
+    graph :
+        Directed tensor-network graph.
+    root_node :
+        Node index to be used as the root for distance computations.
+
+    Returns
+    -------
+    up_edges : list of tuple
+        Upward edges sorted by decreasing distance of their target node.
+    down_edges : list of tuple
+        Downward edges sorted by increasing distance of their target node.
+    """
+    distance = dict(nx.shortest_path_length(graph, source=root_node))
+
+    up_edges = [edge for edge in graph.edges() if distance[edge[0]] > distance[edge[1]]]
+    down_edges = [
+        edge for edge in graph.edges() if distance[edge[0]] < distance[edge[1]]
+    ]
+
+    sorted_up_edges = sorted(up_edges, key=lambda e: -distance[e[1]])
+    sorted_down_edges = sorted(down_edges, key=lambda e: distance[e[1]])
     return sorted_up_edges, sorted_down_edges
 
-def sweep(G, include_leaves = True):
-    up, down = up_edges_by_distance_to_root(G, root(G))
-    sw = up + down
+
+def sweep(
+    graph: nx.DiGraph,
+    include_leaves: bool = True,
+) -> List[Tuple[int, int]]:
+    r"""
+    Construct a full up-and-down edge sweep of the network.
+
+    The sweep consists of:
+
+    1. All *upward* edges (towards the root), sorted by decreasing distance
+       to the root.
+    2. All *downward* edges (away from the root), sorted by increasing
+       distance to the root.
+
+    Parameters
+    ----------
+    graph :
+        Directed tensor-network graph.
+    include_leaves :
+        If ``False``, leaf edges (see :func:`is_leaf`) are excluded
+        from the returned sweep.
+
+    Returns
+    -------
+    list of tuple
+        Ordered list of edges for a full sweep.
+    """
+    up_edges, down_edges = up_edges_by_distance_to_root(graph, root(graph))
+    sweep_edges = up_edges + down_edges
     if not include_leaves:
-        sw = [edge for edge in sw if not is_leaf(edge, G)]
-    return sw
+        sweep_edges = [edge for edge in sweep_edges if not is_leaf(edge, graph)]
+    return sweep_edges
 
-def up_sweep(G, include_leaves = True):
-    # @todo: add unit test
-    up, _ = up_edges_by_distance_to_root(G, root(G))
-    sw = up
+
+def up_sweep(
+    graph: nx.DiGraph,
+    include_leaves: bool = True,
+) -> List[Tuple[int, int]]:
+    r"""
+    Construct an upward-only edge sweep.
+
+    This returns only the set of edges that point towards the root, ordered
+    by decreasing distance to the root (deepest edges first).
+
+    Parameters
+    ----------
+    graph :
+        Directed tensor-network graph.
+    include_leaves :
+        If ``False``, leaf edges (see :func:`is_leaf`) are excluded.
+
+    Returns
+    -------
+    list of tuple
+        Ordered list of upward edges.
+    """
+    up_edges, _ = up_edges_by_distance_to_root(graph, root(graph))
+    sweep_edges = up_edges
     if not include_leaves:
-        sw = [edge for edge in sw if not is_leaf(edge, G)]
-    return sw
+        sweep_edges = [edge for edge in sweep_edges if not is_leaf(edge, graph)]
+    return sweep_edges
 
-#def sweep(G, include_leaves = True):
-#    up = sorted(G.edges, key = lambda x: x[0])
-#    up = [edge for edge in up if up_edge(edge)]
-#    down = reversed(up)
-#    down = [edge for edge in down if not is_leaf(edge, G)]
-#    down = [flip(edge) for edge in down]
-#    res = up + down
-#    if not include_leaves:
-#        res = [edge for edge in res if not is_leaf(edge, G)]
-#    return res
 
-def rsweep(G):
-    return reversed(sweep(G))
+def rsweep(graph: nx.DiGraph) -> List[Tuple[int, int]]:
+    r"""
+    Reverse sweep: reverse of :func:`sweep`.
 
-def add_leaves(G, f):
-    for i in range(f):
+    Parameters
+    ----------
+    graph :
+        Directed tensor-network graph.
+
+    Returns
+    -------
+    list of tuple
+        Reversed full sweep.
+    """
+    return list(reversed(sweep(graph)))
+
+
+def add_leaves(graph: nx.DiGraph, num_leaves: int) -> None:
+    r"""
+    Add bidirectional leaf edges to the graph.
+
+    For each ``i`` in ``0, ..., num_leaves - 1``, this creates a pair of
+    nodes ``i`` (core) and ``-i - 1`` (leaf) and connects them via edges
+    ``(i, -i - 1)`` and ``(-i - 1, i)``. The edges receive a ``"coordinate"``
+    attribute equal to ``i``.
+
+    Parameters
+    ----------
+    graph :
+        Directed tensor-network graph to modify in place.
+    num_leaves :
+        Number of leaf (physical) sites to add.
+    """
+    for i in range(num_leaves):
         edge = (i, -i - 1)
-        G.add_edge(i, -i - 1)
-        G.add_edge(-i - 1, i)
-        G.edges[edge]['coordinate'] = i
-        G.edges[flip(edge)]['coordinate'] = i
+        graph.add_edge(i, -i - 1)
+        graph.add_edge(-i - 1, i)
+        graph.edges[edge]["coordinate"] = i
+        graph.edges[flip(edge)]["coordinate"] = i
 
-def root(G):
-    """
-    Return the root of a tree
-    """
-    # @todo: remove dependency of node indexing. Maybe at least use '0' as root
-    return max(G.nodes)
 
-def up_leaves(G):
-    """
-    Return the leaves of a tree
-    """
-    return [edge for edge in G.edges if is_leaf(edge, G) and up_edge(edge, G)]
+def root(graph: nx.DiGraph) -> int:
+    r"""
+    Return the root node of the tree.
 
-def children(G, node):
-    in_edges = G.in_edges(node)
-    return [e[0] for e in in_edges if e[0] < node]
+    By convention, we use the node with the maximum index as the root.
 
-def _star_sweep(G, node, parent = None, sweep = []):
-    childs = children(G, node)
-    for child in childs:
+    Parameters
+    ----------
+    graph :
+        Directed tensor-network graph.
+
+    Returns
+    -------
+    int
+        Root node index.
+    """
+    # NOTE: This relies on numeric node labels; can be changed later if needed.
+    return max(graph.nodes)
+
+
+def up_leaves(graph: nx.DiGraph) -> List[Tuple[int, int]]:
+    r"""
+    Return all leaf edges that point upward (towards the root).
+
+    Parameters
+    ----------
+    graph :
+        Directed tensor-network graph.
+
+    Returns
+    -------
+    list of tuple
+        Leaf edges for which :func:`up_edge` returns ``True``.
+    """
+    return [
+        edge for edge in graph.edges if is_leaf(edge, graph) and up_edge(edge, graph)
+    ]
+
+
+def children(graph: nx.DiGraph, node: int) -> List[int]:
+    r"""
+    Return the *children* of a node in the directed tree.
+
+    Here we define children as nodes that have an incoming edge into
+    ``node`` and have a smaller index than ``node``. This matches the
+    indexing conventions in the tensor-network constructors.
+
+    Parameters
+    ----------
+    graph :
+        Directed tensor-network graph.
+    node :
+        Node index whose children are requested.
+
+    Returns
+    -------
+    list of int
+        List of child node indices.
+    """
+    incoming_edges = graph.in_edges(node)
+    return [edge[0] for edge in incoming_edges if edge[0] < node]
+
+
+def _star_sweep(
+    graph: nx.DiGraph,
+    node: int,
+    parent: int | None,
+    sweep_edges: List[Tuple[int, int]],
+) -> None:
+    r"""
+    Recursive helper for :func:`star_sweep`.
+
+    Parameters
+    ----------
+    graph :
+        Directed tensor-network graph.
+    node :
+        Current node in the traversal.
+    parent :
+        Parent node in the traversal, or ``None`` for the root.
+    sweep_edges :
+        List of edges (modified in place) that accumulates the sweep.
+    """
+    child_nodes = children(graph, node)
+    for child in child_nodes:
         if child < 0:
+            # Skip physical leaf nodes
             continue
-        sweep.append((node, child))
-        _star_sweep(G, child, node, sweep)
+        sweep_edges.append((node, child))
+        _star_sweep(graph, child, node, sweep_edges)
     if parent is not None:
-        sweep.append((node, parent))
+        sweep_edges.append((node, parent))
 
-def star_sweep(G, exclude_leafs = False):
-    rt = root(G)
-    sweep = []
-    _star_sweep(G, rt, None, sweep)
-    if exclude_leafs:
-        sweep = [edge for edge in sweep if not is_leaf(edge, G)]
-    return sweep
 
-def remove_edge(G, edge):
-    pre = pre_edges(G, edge, remove_flipped=True)
-    v = edge[0]
-    w = edge[1]
-    # redirect edges
-    for e in pre:
-        attr = G.get_edge_data(*e)
-        G.add_edge(e[0], w, **attr)
-        G.remove_edge(*e)
-    G.remove_edge(*edge)
-    G.remove_edge(*flip(edge))
-    G.remove_node(v)
-    return G
+def star_sweep(
+    graph: nx.DiGraph,
+    exclude_leaves: bool = False,
+) -> List[Tuple[int, int]]:
+    r"""
+    Construct a star-like sweep starting from the root.
 
-"""
-Tensor Networks
-"""
+    The sweep traverses edges from the root down to children recursively
+    and then back up to the parent, collecting edges in a DFS-like order.
 
-def add_layer_index(G, root = None):
-    if root is None:
-        root = max(G.nodes)
-    for node in G.nodes:
-        layer = nx.shortest_path_length(G, node, root)
-        G.nodes[node]['layer'] = layer
-    return G
+    Parameters
+    ----------
+    graph :
+        Directed tensor-network graph.
+    exclude_leaves :
+        If ``True``, leaf edges are excluded from the final sweep.
 
-def tensor_train_graph(f, r = 2, primitive_grid: int | list[int] = 8):
+    Returns
+    -------
+    list of tuple
+        Ordered list of edges.
     """
-    Generate a tensor train network
+    root_node = root(graph)
+    sweep_edges: List[Tuple[int, int]] = []
+    _star_sweep(graph, root_node, None, sweep_edges)
+    if exclude_leaves:
+        sweep_edges = [edge for edge in sweep_edges if not is_leaf(edge, graph)]
+    return sweep_edges
+
+
+def remove_edge(graph: nx.DiGraph, edge: Tuple[int, int]) -> nx.DiGraph:
+    r"""
+    Remove an edge and connect its predecessors directly to its target.
+
+    Given an edge ``(v, w)``, this function:
+
+    1. Collects all incoming edges ``(u, v)`` into ``v`` (excluding the
+       flipped edge ``(w, v)``).
+    2. Re-routes them to ``(u, w)``, copying over their edge attributes.
+    3. Removes both ``(v, w)`` and its flipped counterpart ``(w, v)``.
+    4. Removes the node ``v`` from the graph.
+
+    Parameters
+    ----------
+    graph :
+        Directed tensor-network graph to modify.
+    edge :
+        Edge ``(v, w)`` to remove.
+
+    Returns
+    -------
+    nx.DiGraph
+        The modified graph (same object as input).
     """
-    G = nx.DiGraph()
-    G.add_nodes_from(range(f))
+    predecessors = pre_edges(graph, edge, remove_flipped=True)
+    source_node = edge[0]
+    target_node = edge[1]
 
-    # leaf edges
-    add_leaves(G, f)
+    # Redirect predecessors to the target node
+    for pred_edge in predecessors:
+        attr = graph.get_edge_data(*pred_edge)
+        graph.add_edge(pred_edge[0], target_node, **attr)
+        graph.remove_edge(*pred_edge)
 
-    # normal edges
-    for i in range(f - 1):
-        G.add_edge(i, i + 1)
+    graph.remove_edge(*edge)
+    graph.remove_edge(*flip(edge))
+    graph.remove_node(source_node)
+    return graph
 
-    # reverse edges
-    for i in range(f - 1, 0, -1):
-        G.add_edge(i, i - 1)
 
+# ---------------------------------------------------------------------
+# Tensor-network structural helpers
+# ---------------------------------------------------------------------
+
+
+def add_layer_index(graph: nx.DiGraph, root_node: int | None = None) -> nx.DiGraph:
+    r"""
+    Add a ``"layer"`` attribute to each node: distance from the root.
+
+    The layer index is defined as the shortest-path distance from the
+    given root node (or from :func:`root(graph)` if ``root_node`` is
+    not provided).
+
+    Parameters
+    ----------
+    graph :
+        Directed tensor-network graph.
+    root_node :
+        Root node for layer computation. If ``None``, ``root(graph)``
+        is used.
+
+    Returns
+    -------
+    nx.DiGraph
+        The same graph with node attribute ``"layer"`` set.
+    """
+    if root_node is None:
+        root_node = root(graph)
+    for node in graph.nodes:
+        layer = nx.shortest_path_length(graph, node, root_node)
+        graph.nodes[node]["layer"] = layer
+    return graph
+
+
+def tensor_train_graph(
+    num_cores: int,
+    rank: int = 2,
+    primitive_grid: int | List[Sequence[Any]] = 8,
+) -> nx.DiGraph:
+    r"""
+    Generate a tensor-train (TT) network graph.
+
+    The construction is:
+
+    * Core nodes: ``0, 1, ..., num_cores - 1``.
+    * For each core ``i`` a leaf node ``-i - 1`` is added and connected
+      bidirectionally.
+    * Core nodes are connected in a chain with forward edges
+      ``(i, i + 1)`` and backward edges ``(i, i - 1)``.
+    * Each edge gets a rank attribute ``"r"``:
+
+      - Leaf edges: ``r = N_i``, where ``N_i`` is the physical dimension
+        for coordinate ``i``.
+      - Internal edges: ``r = min(rank, ∏ r_pre)`` where ``r_pre`` are
+        the ranks of predecessor edges.
+
+    Parameters
+    ----------
+    num_cores :
+        Number of TT cores (physical sites).
+    rank :
+        Target internal TT rank.
+    primitive_grid :
+        Either an integer ``N`` specifying the same physical dimension
+        for all sites, or a list/sequence of grids for each coordinate,
+        where the length of each grid determines the physical dimension.
+
+    Returns
+    -------
+    nx.DiGraph
+        Directed tensor-train graph with edge attributes ``"r"`` and
+        ``"coordinate"`` set.
+    """
+    graph = nx.DiGraph()
+    graph.add_nodes_from(range(num_cores))
+
+    # Leaf edges (physical indices)
+    add_leaves(graph, num_cores)
+
+    # Core chain forward edges
+    for i in range(num_cores - 1):
+        graph.add_edge(i, i + 1)
+
+    # Core chain backward edges
+    for i in range(num_cores - 1, 0, -1):
+        graph.add_edge(i, i - 1)
+
+    # Physical dimensions per coordinate
     if isinstance(primitive_grid, int):
-        Ns = [primitive_grid] * f
+        phys_dims = [primitive_grid] * num_cores
     else:
-        # Ns = N
-        Ns = []
-        for grid in primitive_grid:
-            Ns.append(len(grid))
-            
+        phys_dims = [len(grid) for grid in primitive_grid]
 
-    # add ranks
-    for edge in sweep(G):
-        if not is_leaf(edge, G):
-            pre = pre_edges(G, edge, True)
-            rmax = np.prod(collect(G, pre, 'r'))
-            G.edges[edge]['r'] = min(r, rmax)
+    # First pass: assign ranks based on predecessors
+    for edge in sweep(graph):
+        if not is_leaf(edge, graph):
+            predecessors = pre_edges(graph, edge, remove_flipped=True)
+            r_max = (
+                int(np.prod(collect(graph, predecessors, "r")))
+                if predecessors
+                else rank
+            )
+            graph.edges[edge]["r"] = min(rank, r_max)
         else:
-            coord = G.edges[edge]['coordinate']
-            G.edges[edge]['r'] = Ns[coord]
+            coord = graph.edges[edge]["coordinate"]
+            graph.edges[edge]["r"] = phys_dims[coord]
 
-    for edge in sweep(G):
-        if not is_leaf(edge, G):
-            r = G.edges[edge]['r']
-            other = G.edges[flip(edge)]['r']
-            G.edges[edge]['r'] = min(r, other)
+    # Second pass: ensure consistency between opposite directions
+    for edge in sweep(graph):
+        if not is_leaf(edge, graph):
+            r_val = graph.edges[edge]["r"]
+            other = graph.edges[flip(edge)]["r"]
+            graph.edges[edge]["r"] = min(r_val, other)
 
-    return G
+    return graph
 
-def tensor_train_operator_graph(f, r = 2, N = 8):
+
+def tensor_train_operator_graph(
+    num_cores: int,
+    rank: int = 2,
+    phys_dim: int = 8,
+) -> nx.DiGraph:
+    r"""
+    Generate a tensor-train operator graph.
+
+    This is similar to :func:`tensor_train_graph`, but each core node
+    connects to **two** leaf nodes representing bra/ket (or input/output)
+    indices, suitable for tensor-train operator representations.
+
+    Parameters
+    ----------
+    num_cores :
+        Number of TT cores.
+    rank :
+        Internal TT rank used on non-leaf edges.
+    phys_dim :
+        Physical dimension used on leaf edges.
+
+    Returns
+    -------
+    nx.DiGraph
+        Directed tensor-train operator graph with edge attributes
+        ``"r"`` and ``"coordinate"`` set on leaf edges.
     """
-    Generate a tensor train network
-    """
-    G = nx.DiGraph()
-    G.add_nodes_from(range(f))
+    graph = nx.DiGraph()
+    graph.add_nodes_from(range(num_cores))
 
-    # leaf edges
-    for i in range(0, f):
+    # Leaf edges: two leaves (x, y) per core
+    for i in range(num_cores):
         node = i
-        x = -2*i - 1
-        y = -2*i - 2
-        G.add_edge(node, x)
-        G.add_edge(x, node)
-        G.add_edge(node, y)
-        G.add_edge(y, node)
+        x = -2 * i - 1
+        y = -2 * i - 2
+        graph.add_edge(node, x)
+        graph.add_edge(x, node)
+        graph.add_edge(node, y)
+        graph.add_edge(y, node)
 
+    # Core chain forward edges
+    for i in range(num_cores - 1):
+        graph.add_edge(i, i + 1)
 
-    # normal edges
-    for i in range(f - 1):
-        G.add_edge(i, i + 1)
+    # Core chain backward edges
+    for i in range(num_cores - 1, 0, -1):
+        graph.add_edge(i, i - 1)
 
-    # reverse edges
-    for i in range(f - 1, 0, -1):
-        G.add_edge(i, i - 1)
-
-    # add ranks
-    for edge in G.edges():
-        if not is_leaf(edge, G):
-            G.edges[edge]['r'] = r
+    # Rank assignment
+    for edge in graph.edges():
+        if not is_leaf(edge, graph):
+            graph.edges[edge]["r"] = rank
         else:
-            G.edges[edge]['r'] = N
+            graph.edges[edge]["r"] = phys_dim
 
-    # add random edge entries
+    # Coordinate indices for leaf edges (only upward ones)
     coord = 0
-    for edge in G.edges():
-        if is_leaf(edge, G) and up_edge(edge, G):
-            G.edges[edge]['coordinate'] = coord
+    for edge in graph.edges():
+        if is_leaf(edge, graph) and up_edge(edge, graph):
+            graph.edges[edge]["coordinate"] = coord
             coord += 1
-    return G
 
-def _combine_nodes(nodes, id, edges):
-    """
-    Helper function for balanced_tree
-    Combines nodes from a vector into new nodes.
-    nodes: list of nodes
-    id: new node idx
-    nodes: {1, 2, 3, 4} -> {5, 6}
-    n = 5 -> 7
-    and add edges {(1, 5), (2, 5), (3, 6), (4, 6)} to G
+    return graph
+
+
+# ---------------------------------------------------------------------
+# Balanced tree construction
+# ---------------------------------------------------------------------
+
+
+def _combine_nodes(
+    nodes: List[int],
+    next_node_id: int,
+    edges: List[Tuple[int, int]],
+) -> Tuple[List[int], int, List[Tuple[int, int]]]:
+    r"""
+    Helper for :func:`build_tree`: combine nodes into parents.
+
+    Takes a list of current nodes and repeatedly combines them in pairs
+    into a new parent node with ID starting from ``next_node_id``.
+    For each pair ``(l, r)``, new parent ``p`` is added and edges
+    ``(r, p)`` and ``(l, p)`` are appended to ``edges``.
+
+    Parameters
+    ----------
+    nodes :
+        List of current leaf/internal node indices.
+    next_node_id :
+        Next available node index for newly created parents.
+    edges :
+        List of edges (modified in place) to which new edges are appended.
+
+    Returns
+    -------
+    nodes :
+        Updated list of nodes where each processed pair is replaced by
+        the new parent.
+    next_node_id :
+        Updated next node index.
+    edges :
+        Updated edge list with newly added parent edges.
     """
     for i in range(len(nodes) - 2, -1, -2):
-        l = nodes[i]
-        r = nodes[i+1]
+        left = nodes[i]
+        right = nodes[i + 1]
+        # Remove the pair
         nodes.pop(i)
         nodes.pop(i)
-        nodes.append(id)
-        edges.append((r, id))
-        edges.append((l, id))
-        id += 1
-    return nodes, id, edges
+        # Add new parent node
+        nodes.append(next_node_id)
+        edges.append((right, next_node_id))
+        edges.append((left, next_node_id))
+        next_node_id += 1
+    return nodes, next_node_id, edges
 
-def build_tree(f):
+
+def build_tree(num_leaves: int) -> List[Tuple[int, int]]:
+    r"""
+    Create a near-balanced tree structure over ``num_leaves`` leaves.
+
+    The function returns a set of edges that connect the leaves into
+    a close-to balanced tree by repeatedly combining pairs of nodes.
+
+    Parameters
+    ----------
+    num_leaves :
+        Number of leaf nodes.
+
+    Returns
+    -------
+    list of tuple
+        Edges connecting leaves and internal nodes.
     """
-    create edges for a (close-to) balanced tree with f leaves
-    """
-    nodes = list(range(f))
-    # special case for odd number of leaves
-    if f % 2 == 1:
-        nodes[0] = -1 
-    id = f
-    edges = []
+    nodes = list(range(num_leaves))
+
+    # Special case for odd number of leaves: mark first as pseudo-node.
+    if num_leaves % 2 == 1:
+        nodes[0] = -1
+
+    next_node_id = num_leaves
+    edges: List[Tuple[int, int]] = []
     while len(nodes) > 1:
-        nodes, id, edges = _combine_nodes(nodes, id, edges)
+        nodes, next_node_id, edges = _combine_nodes(nodes, next_node_id, edges)
     return edges
 
-def balanced_tree(f, r = 2, N = 8):
-    """
-    Generate a close-to balanced tree tensor network
-    Node: odd f is implemented manually:
-          avoids adding unnecessary node by added code.
-          See # odd-leaf tag
-    """
-    G = nx.DiGraph()
 
-    start = f % 2 # special case for odd number of leaves
-    for i in range(start, f):
+def balanced_tree(
+    num_leaves: int,
+    rank: int = 2,
+    phys_dim: int = 8,
+) -> nx.DiGraph:
+    r"""
+    Generate a close-to balanced tree tensor network.
+
+    Leaves correspond to physical degrees of freedom, internal nodes
+    form a near-balanced tree over these leaves. Each directed edge
+    receives a rank attribute ``"r"``:
+
+    * Leaf edges: ``r = phys_dim``.
+    * Internal edges: ``r = min(rank, ∏ r_pre)`` based on predecessor
+      ranks, then symmetrized with their flipped counterparts.
+
+    Parameters
+    ----------
+    num_leaves :
+        Number of physical leaves.
+    rank :
+        Target internal rank.
+    phys_dim :
+        Rank assigned to leaf edges (often equal to physical dimension).
+
+    Returns
+    -------
+    nx.DiGraph
+        Directed balanced tree graph with edge attribute ``"r"`` set.
+    """
+    graph = nx.DiGraph()
+
+    # Leaf edges: connect physical leaves to internal nodes
+    start = num_leaves % 2  # special case for odd number of leaves
+    for i in range(start, num_leaves):
         edge = (-i - 1, i)
-        G.add_edge(edge[0], edge[1])
-        G.add_edge(edge[1], edge[0])
+        graph.add_edge(edge[0], edge[1])
+        graph.add_edge(edge[1], edge[0])
 
-    edges = build_tree(f)
-    for edge in edges:
-        G.add_edge(edge[0], edge[1])
+    # Build internal tree structure
+    tree_edges = build_tree(num_leaves)
+    for edge in tree_edges:
+        graph.add_edge(edge[0], edge[1])
 
-    for edge in reversed(edges):
-#        if edge[0] < 0:
-#            continue # special case for odd number of leaves
-        G.add_edge(edge[1], edge[0])
-    
-    # add ranks
-    for edge in sweep(G):
-        if not is_leaf(edge, G):
-            pre = pre_edges(G, edge, True)
-            rmax = np.prod(collect(G, pre, 'r'))
-            G.edges[edge]['r'] = min(r, rmax)
+    # Add reverse edges for internal tree
+    for edge in reversed(tree_edges):
+        graph.add_edge(edge[1], edge[0])
+
+    # First pass: assign ranks
+    for edge in sweep(graph):
+        if not is_leaf(edge, graph):
+            predecessors = pre_edges(graph, edge, remove_flipped=True)
+            r_max = (
+                int(np.prod(collect(graph, predecessors, "r")))
+                if predecessors
+                else rank
+            )
+            graph.edges[edge]["r"] = min(rank, r_max)
         else:
-            G.edges[edge]['r'] = N
+            graph.edges[edge]["r"] = phys_dim
 
-    for edge in sweep(G):
-        if not is_leaf(edge, G):
-            r = G.edges[edge]['r']
-            other = G.edges[flip(edge)]['r']
-            G.edges[edge]['r'] = min(r, other)
+    # Second pass: symmetrize ranks between flipped edges
+    for edge in sweep(graph):
+        if not is_leaf(edge, graph):
+            r_val = graph.edges[edge]["r"]
+            other = graph.edges[flip(edge)]["r"]
+            graph.edges[edge]["r"] = min(r_val, other)
 
-    return G 
+    return graph
