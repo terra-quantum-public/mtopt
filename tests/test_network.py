@@ -94,10 +94,7 @@ def test_add_leaves_and_up_leaves_and_is_leaf():
     add_leaves(graph, num_cores)
 
     # There should be 2 * num_cores leaf edges (bidirectional)
-    leaf_edges = [
-        edge for edge in graph.edges()
-        if edge[0] < 0 or edge[1] < 0
-    ]
+    leaf_edges = [edge for edge in graph.edges() if edge[0] < 0 or edge[1] < 0]
     assert len(leaf_edges) == 2 * num_cores
 
     # All edges touching a negative node should be leaf edges
@@ -214,7 +211,9 @@ def test_tensor_train_operator_graph_structure():
     rank = 4
     phys_dim = 6
 
-    graph = tensor_train_operator_graph(num_cores=num_cores, rank=rank, phys_dim=phys_dim)
+    graph = tensor_train_operator_graph(
+        num_cores=num_cores, rank=rank, phys_dim=phys_dim
+    )
 
     # Each core node has two leaf nodes (bra/ket)
     leaf_nodes = [n for n in graph.nodes if n < 0]
@@ -222,8 +221,7 @@ def test_tensor_train_operator_graph_structure():
 
     # Leaf edges (upward) should have coordinates assigned
     upward_leaf_edges = [
-        edge for edge in graph.edges()
-        if is_leaf(edge, graph) and up_edge(edge, graph)
+        edge for edge in graph.edges() if is_leaf(edge, graph) and up_edge(edge, graph)
     ]
     assert len(upward_leaf_edges) == 2 * num_cores
 

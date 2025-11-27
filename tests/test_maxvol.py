@@ -147,7 +147,7 @@ def test_maxvol_rect_no_max_extra_rows_argument():
 
     row_indices, coeff_matrix = maxvol_rect(
         matrix,
-        accuracy=1.5,         # looser accuracy to stop early
+        accuracy=1.5,  # looser accuracy to stop early
         min_extra_rows=0,
         max_extra_rows=None,  # no explicit upper bound
         base_accuracy=1.05,
