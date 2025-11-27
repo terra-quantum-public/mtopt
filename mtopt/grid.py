@@ -109,7 +109,9 @@ def _cartesian_product(grid_1: np.ndarray, grid_2: np.ndarray) -> np.ndarray:
     grid_1_tiled = np.broadcast_to(grid_1_expanded, (n_1, n_2, d_1))
     grid_2_tiled = np.broadcast_to(grid_2_expanded, (n_1, n_2, d_2))
 
-    product = np.concatenate((grid_1_tiled, grid_2_tiled), axis=2)  # (n_1, n_2, d_1 + d_2)
+    product = np.concatenate(
+        (grid_1_tiled, grid_2_tiled), axis=2
+    )  # (n_1, n_2, d_1 + d_2)
     return product.reshape(n_1 * n_2, d_1 + d_2)
 
 
@@ -240,9 +242,9 @@ class Grid:
         """
         new_grid = self.grid[:, self.permutation]
         new_coords = self.coords[self.permutation]
-        G = Grid(new_grid, new_coords)
-        G.permutation = np.argsort(self.permutation)
-        return G
+        grid = Grid(new_grid, new_coords)
+        grid.permutation = np.argsort(self.permutation)
+        return grid
 
     def random_subset(self, n: int) -> "Grid":
         r"""
@@ -571,7 +573,7 @@ def tn_grid(
         graph.edges[leaf]["grid"] = Grid(primitive_grid[coord], coord)
 
     # Internal edge grids
-    for edge in sweep(graph, forward=False):
+    for edge in sweep(graph, include_leaves=False):
         r = graph.edges[edge]["r"]
         pre = pre_edges(graph, edge, remove_flipped=True)
         pre_grids: List[Grid] = collect(graph, pre, "grid")
@@ -590,6 +592,7 @@ def tn_grid(
 
     build_node_grid(graph)
     return graph
+
 
 def transform_node_grid(graph: Any, q_to_x) -> Any:
     r"""
@@ -662,36 +665,36 @@ def regularized_inverse(
         values (empty spectrum), a zero matrix of the appropriate shape
         is returned.
     """
-    U, sigma, VT = np.linalg.svd(matrix, full_matrices=False)
+    u_matrix, singular_values, vt_matrix = np.linalg.svd(matrix, full_matrices=False)
 
     # Ensure float64 for stability
-    U = U.astype(np.float64, copy=False)
-    sigma = sigma.astype(np.float64, copy=False)
-    VT = VT.astype(np.float64, copy=False)
+    u_matrix = u_matrix.astype(np.float64, copy=False)
+    singular_values = singular_values.astype(np.float64, copy=False)
+    vt_matrix = vt_matrix.astype(np.float64, copy=False)
 
-    if sigma.size == 0:
+    if singular_values.size == 0:
         # Empty spectrum: return shape-consistent zero "inverse"
         return np.zeros_like(matrix.T, dtype=np.float64)
 
-    s_max = float(np.max(sigma))
-    lam = float(lambda_reg)
+    sigma_max = float(np.max(singular_values))
+    lambda_eff = float(lambda_reg)
 
     # Enforce strictly positive, finite regularization
-    if not np.isfinite(lam) or lam <= 0.0:
-        lam = eps
+    if not np.isfinite(lambda_eff) or lambda_eff <= 0.0:
+        lambda_eff = eps
 
-    if not np.isfinite(s_max) or s_max <= 0.0:
-        alpha = lam * lam
+    if not np.isfinite(sigma_max) or sigma_max <= 0.0:
+        alpha_reg = lambda_eff * lambda_eff
     else:
-        alpha = (lam * s_max) ** 2
+        alpha_reg = (lambda_eff * sigma_max) ** 2
 
-    denom = sigma * sigma + alpha
-    denom = np.where(denom <= eps, eps, denom)
+    denominator = singular_values * singular_values + alpha_reg
+    denominator = np.where(denominator <= eps, eps, denominator)
 
-    sigma_inv = sigma / denom
+    singular_values_inv = singular_values / denominator
 
     # matrix_inv = V * diag(sigma_inv) * U^T
-    return (VT.T * sigma_inv) @ U.T
+    return (vt_matrix.T * singular_values_inv) @ u_matrix.T
 
 
 def maxvol_grids(
@@ -741,8 +744,8 @@ def maxvol_grids(
     currently hard-coded to ``1e-12`` for numerical stability.
     """
     pre = pre_edges(graph, edge, remove_flipped=True)
-    grid_L_list: List[Grid] = collect(graph, pre, "grid")
-    grid_L = cartesian_product(grid_L_list)
+    grid_l_list: List[Grid] = collect(graph, pre, "grid")
+    grid_l = cartesian_product(grid_l_list)
 
     mat = tensor.flatten(edge)
 
@@ -752,4 +755,4 @@ def maxvol_grids(
     cross_inv_mat = regularized_inverse(mat[rows, :], lambda_reg=1e-12)
     cross_inv = Tensor(cross_inv_mat, [edge, flip(edge)])
 
-    return grid_L[rows, :], cross_inv
+    return grid_l[rows, :], cross_inv
