@@ -98,7 +98,7 @@ def maxvol(
         raise ValueError('Input matrix should be "tall" (n >= r).')
 
     # LU decomposition without pivoting checks for speed
-    p_matrix, lower, upper = lu(matrix, check_finite=False, permute_l=False) # pylint: disable=W0632
+    p_matrix, lower, upper = lu(matrix, check_finite=False, permute_l=False)  # pylint: disable=W0632
 
     try:
         # Initial row indices from LU permutation
