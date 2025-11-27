@@ -12,8 +12,8 @@ The conventions used here are:
   negative indices, connected bidirectionally to their parent *core* node.
 * Edges may carry attributes such as
 
-  - ``"coordinate"`` – index of the physical coordinate,
-  - ``"r"`` – rank associated with the edge in tensor-train/tree formats.
+  - ``"coordinate"`` - index of the physical coordinate,
+  - ``"r"`` - rank associated with the edge in tensor-train/tree formats.
 
 The module includes:
 
