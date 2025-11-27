@@ -48,7 +48,6 @@ but retains edge information for further tensor-network manipulations.
 This code has been taken and adapted from the PyQuTree package authored by Roman Ellerbrock.
 """
 
-
 from __future__ import annotations
 
 from collections.abc import Hashable
@@ -146,9 +145,9 @@ class Tensor(np.ndarray):
         if obj is None:
             return
 
-        self.edges = getattr(obj, "edges", None) # pylint: disable=W0201
-        self.flattened_to = getattr(obj, "flattened_to", None) # pylint: disable=W0201
-        self.expanded_shape = getattr( # pylint: disable=W0201
+        self.edges = getattr(obj, "edges", None)  # pylint: disable=W0201
+        self.flattened_to = getattr(obj, "flattened_to", None)  # pylint: disable=W0201
+        self.expanded_shape = getattr(  # pylint: disable=W0201
             obj,
             "expanded_shape",
             getattr(obj, "shape", None),
@@ -318,17 +317,21 @@ def tensordot(tensor_1: Tensor, tensor_2: Tensor, edge: Any) -> Tensor:
         If ``edge`` is not present in ``A.edges`` or ``B.edges``,
         or if the corresponding dimensions do not match.
     """
-    e = Tensor._normalize_edge(edge) # pylint: disable=W0212
+    e = Tensor._normalize_edge(edge)  # pylint: disable=W0212
 
     try:
         itensor_1 = tensor_1.edges.index(e)
     except ValueError as exc:
-        raise ValueError(f"Edge {e!r} not found in tensor_1.edges={tensor_1.edges!r}.") from exc
+        raise ValueError(
+            f"Edge {e!r} not found in tensor_1.edges={tensor_1.edges!r}."
+        ) from exc
 
     try:
         itensor_2 = tensor_2.edges.index(e)
     except ValueError as exc:
-        raise ValueError(f"Edge {e!r} not found in tensor_2.edges={tensor_2.edges!r}.") from exc
+        raise ValueError(
+            f"Edge {e!r} not found in tensor_2.edges={tensor_2.edges!r}."
+        ) from exc
 
     if tensor_1.shape[itensor_1] != tensor_2.shape[itensor_2]:
         raise ValueError(
@@ -359,10 +362,10 @@ def tensordot(tensor_1: Tensor, tensor_2: Tensor, edge: Any) -> Tensor:
 
             mapped = tuple(large if lbl == small else lbl for lbl in ex_iter)
             updated_edges_c.append(mapped)
-        edges_c = [Tensor._normalize_edge(ed) for ed in updated_edges_c] # pylint: disable=W0212
+        edges_c = [Tensor._normalize_edge(ed) for ed in updated_edges_c]  # pylint: disable=W0212
     else:
         # Fallback: just canonicalize.
-        edges_c = [Tensor._normalize_edge(ed) for ed in edges_c] # pylint: disable=W0212
+        edges_c = [Tensor._normalize_edge(ed) for ed in edges_c]  # pylint: disable=W0212
 
     result_array = np.tensordot(tensor_1, tensor_2, axes=(itensor_1, itensor_2))
     return Tensor(result_array, edges_c)
