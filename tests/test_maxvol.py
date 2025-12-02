@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from mtopt.maxvol import maxvol, maxvol_rect
+from mtopt.maxvol import maxvol, maxvol_rectangular
 
 
 # ----------------------------------------------------------------------
@@ -54,18 +54,18 @@ def test_maxvol_shapes_and_reconstruction_quality():
 
 
 # ----------------------------------------------------------------------
-# maxvol_rect basic behavior
+# maxvol_rectangular basic behavior
 # ----------------------------------------------------------------------
 
 
-def test_maxvol_rect_reduces_to_maxvol_when_no_extra_rows():
-    """maxvol_rect with zero extra rows should match maxvol output up to numerical precision."""
+def test_maxvol_rectangular_reduces_to_maxvol_when_no_extra_rows():
+    """maxvol_rectangular with zero extra rows should match maxvol output up to numerical precision."""
     rng = np.random.default_rng(42)
     num_rows, rank = 15, 4
     matrix = rng.standard_normal((num_rows, rank))
 
     row_indices_sq, coeff_sq = maxvol(matrix, accuracy=1.02, max_iters=50)
-    row_indices_rect, coeff_rect = maxvol_rect(
+    row_indices_rect, coeff_rect = maxvol_rectangular(
         matrix,
         accuracy=1.1,
         min_extra_rows=0,
@@ -86,8 +86,8 @@ def test_maxvol_rect_reduces_to_maxvol_when_no_extra_rows():
     )
 
 
-def test_maxvol_rect_shapes_and_constraints():
-    """maxvol_rect should respect min/max extra rows and produce a good factorization."""
+def test_maxvol_rectangular_shapes_and_constraints():
+    """maxvol_rectangular should respect min/max extra rows and produce a good factorization."""
     rng = np.random.default_rng(321)
     num_rows, rank = 25, 6
     matrix = rng.standard_normal((num_rows, rank))
@@ -95,7 +95,7 @@ def test_maxvol_rect_shapes_and_constraints():
     min_extra_rows = 2
     max_extra_rows = 4
 
-    row_indices, coeff_matrix = maxvol_rect(
+    row_indices, coeff_matrix = maxvol_rectangular(
         matrix,
         accuracy=1.1,
         min_extra_rows=min_extra_rows,
@@ -121,31 +121,31 @@ def test_maxvol_rect_shapes_and_constraints():
     assert rel_err < 1e-5
 
 
-def test_maxvol_rect_invalid_bounds_raise():
+def test_maxvol_rectangular_invalid_bounds_raise():
     """Invalid min/max extra row settings should raise ValueError."""
     matrix = np.random.randn(10, 4)
 
     # min_extra_rows < 0
     with pytest.raises(ValueError):
-        _ = maxvol_rect(matrix, min_extra_rows=-1, max_extra_rows=2)
+        _ = maxvol_rectangular(matrix, min_extra_rows=-1, max_extra_rows=2)
 
     # min_extra_rows > max_extra_rows
     with pytest.raises(ValueError):
-        _ = maxvol_rect(matrix, min_extra_rows=3, max_extra_rows=1)
+        _ = maxvol_rectangular(matrix, min_extra_rows=3, max_extra_rows=1)
 
     # max_extra_rows too large (but note: implementation clips r+max_extra_rows to n,
     # so to actually trigger ValueError we need an inconsistent min rank)
     with pytest.raises(ValueError):
-        _ = maxvol_rect(matrix, min_extra_rows=20, max_extra_rows=30)
+        _ = maxvol_rectangular(matrix, min_extra_rows=20, max_extra_rows=30)
 
 
-def test_maxvol_rect_no_max_extra_rows_argument():
-    """maxvol_rect should work when max_extra_rows is None."""
+def test_maxvol_rectangular_no_max_extra_rows_argument():
+    """maxvol_rectangular should work when max_extra_rows is None."""
     rng = np.random.default_rng(777)
     num_rows, rank = 12, 5
     matrix = rng.standard_normal((num_rows, rank))
 
-    row_indices, coeff_matrix = maxvol_rect(
+    row_indices, coeff_matrix = maxvol_rectangular(
         matrix,
         accuracy=1.5,  # looser accuracy to stop early
         min_extra_rows=0,

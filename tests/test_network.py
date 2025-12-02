@@ -13,7 +13,7 @@ from mtopt.network import (
     up_edges_by_distance_to_root,
     sweep,
     up_sweep,
-    rsweep,
+    reverse_sweep,
     add_leaves,
     root,
     up_leaves,
@@ -135,8 +135,8 @@ def test_up_edges_and_sweep_order_basic_tt():
     assert full[: len(up_edges)] == up_edges
     assert full[len(up_edges) :] == down_edges
 
-    # rsweep is just reversed sweep
-    assert list(reversed(full)) == rsweep(graph)
+    # reverse_sweep is just reversed sweep
+    assert list(reversed(full)) == reverse_sweep(graph)
 
 
 def test_children_and_star_sweep_on_small_tree():
