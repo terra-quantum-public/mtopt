@@ -1,6 +1,8 @@
 import numpy as np
 import networkx as nx
 
+from mtopt.grid import Grid, tensor_network_grid
+
 from mtopt.network import (
     pre_edges,
     is_leaf,
@@ -334,3 +336,63 @@ def test_is_leaf_node_for_tt_graph():
             pass
 
     assert any(not is_leaf_node(node, graph) for node in graph.nodes if node >= 0)
+
+
+# ----------------------------------------------------------------------
+# Tensor network grid attachment
+# ----------------------------------------------------------------------
+
+
+def test_balanced_tree_assigns_leaf_coordinates():
+    """balanced_tree should assign one unique coordinate per leaf edge."""
+    num_leaves = 5
+    rank = 3
+    phys_dim = 7
+
+    graph = balanced_tree(num_leaves=num_leaves, rank=rank, phys_dim=phys_dim)
+
+    leaf_edges_up = up_leaves(graph)
+    # We expect exactly num_leaves upward leaf edges
+    assert len(leaf_edges_up) == num_leaves
+
+    # Coordinates on upward leaf edges must be {0, ..., num_leaves-1}
+    coords = {graph.edges[edge]["coordinate"] for edge in leaf_edges_up}
+    assert coords == set(range(num_leaves))
+
+    # Each downward counterpart edge must carry the same coordinate
+    for edge in leaf_edges_up:
+        coord = graph.edges[edge]["coordinate"]
+        assert graph.edges[flip(edge)]["coordinate"] == coord
+
+
+def test_tensor_network_grid_attaches_leaf_grids():
+    """tensor_network_grid should attach 1D Grid objects on leaf edges."""
+    num_leaves = 4
+    rank = 2
+    num_points = 7
+
+    graph = balanced_tree(num_leaves=num_leaves, rank=rank, phys_dim=num_points)
+
+    primitive_grids = [
+        np.linspace(0.0, 1.0, num_points)
+        for _ in range(num_leaves)
+    ]
+
+    graph = tensor_network_grid(graph, primitive_grids)
+
+    leaf_edges_up = up_leaves(graph)
+    assert len(leaf_edges_up) == num_leaves
+
+    for edge in leaf_edges_up:
+        coord = graph.edges[edge]["coordinate"]
+        leaf_grid = graph.edges[edge]["grid"]
+
+        # Correct type
+        assert isinstance(leaf_grid, Grid)
+
+        # One coordinate per primitive grid
+        assert leaf_grid.num_coords() == 1
+        assert np.array_equal(leaf_grid.coords, np.array([coord]))
+
+        # Number of points must match that primitive grid
+        assert leaf_grid.num_points() == num_points
