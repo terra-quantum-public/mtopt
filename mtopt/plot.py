@@ -285,22 +285,15 @@ def tensor_network_to_dataframe(graph: nx.Graph, func=None):
     pandas.DataFrame
         DataFrame with columns:
 
-        * ``"xyz"`` – the raw point (1D array of coordinates),
-        * ``"node"`` – the node identifier,
-        * optionally ``"f"`` – the function value at that point.
+        * ``"xyz"`` - the raw point (1D array of coordinates),
+        * ``"node"`` - the node identifier,
+        * optionally ``"f"`` - the function value at that point.
 
     Notes
     -----
     This function requires :mod:`pandas` to be installed. If it is not
     available, an :class:`ImportError` is raised.
     """
-    try:
-        import pandas as pd
-    except ImportError as exc:  # pragma: no cover - import error path
-        raise ImportError(
-            "tn_to_df requires `pandas` to be installed. "
-            "Install it via `pip install pandas`."
-        ) from exc
 
     node_grids_dict = nx.get_node_attributes(graph, "grid")
 
@@ -355,13 +348,6 @@ def plot_tree(
     matplotlib.axes.Axes
         The Matplotlib axes on which the tree was drawn.
     """
-    try:
-        import matplotlib.pyplot as plt
-    except ImportError as exc:  # pragma: no cover - import error path
-        raise ImportError(
-            "plot_tree requires `matplotlib` to be installed. "
-            "Install it via `pip install matplotlib`."
-        ) from exc
 
     graph = add_layer_index(graph)
     num_leaves = len(up_leaves(graph))
@@ -431,22 +417,15 @@ def tensor_network_grid_to_dataframe(graph: nx.Graph, objective) -> "pd.DataFram
     pandas.DataFrame
         DataFrame with columns:
 
-        * ``"node"`` – node identifier,
-        * ``"f"`` – objective value at the grid point,
-        * ``"x1"``, ``"x2"``, ..., ``"xD"`` – coordinate components.
+        * ``"node"`` - node identifier,
+        * ``"f"`` - objective value at the grid point,
+        * ``"x1"``, ``"x2"``, ..., ``"xD"`` - coordinate components.
 
     Notes
     -----
     This function requires :mod:`pandas` to be installed. If it is not
     available, an :class:`ImportError` is raised.
     """
-    try:
-        import pandas as pd
-    except ImportError as exc:  # pragma: no cover - import error path
-        raise ImportError(
-            "tn_grid_to_dataframe requires `pandas` to be installed. "
-            "Install it via `pip install pandas`."
-        ) from exc
 
     node_attributes = nx.get_node_attributes(graph, "grid")
     # Extract raw NumPy arrays for each node that has a grid
@@ -511,13 +490,6 @@ def concat_pandas(dataframes: Sequence["pd.DataFrame"]):
     This function requires :mod:`pandas` to be installed. If it is not
     available, an :class:`ImportError` is raised.
     """
-    try:
-        import pandas as pd
-    except ImportError as exc:  # pragma: no cover - import error path
-        raise ImportError(
-            "concat_pandas requires `pandas` to be installed. "
-            "Install it via `pip install pandas`."
-        ) from exc
 
     frames: List[pd.DataFrame] = []
     for t, df in enumerate(dataframes):
