@@ -1,5 +1,4 @@
 """
-This code has been taken and adapted from the pyQuTree package.
 Optimization routines for grid-based tensor approximations in PyQuTree.
 
 This module provides:
@@ -10,6 +9,9 @@ This module provides:
   - Two model implementations:
       * TensorRankOptimization: CP/Tensor-Rank optimizer.
       * MatrixTrainOptimization: General N-site Matrix-Train optimizer.
+
+This code is adapted from the PyQuTree package by Roman Ellerbrock.
+Co-authored and modified by Aleksandr Berezutskii.
 """
 
 import random
@@ -19,9 +21,8 @@ from typing import Callable
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 
-from qutree.ttn.grid import Grid
-from qutree import cartesian_product
-from qutree.matrix_factorizations.maxvol import maxvol
+from mtopt.maxvol import maxvol
+from mtopt.grid import Grid, cartesian_product
 
 
 class Model:
@@ -91,7 +92,7 @@ def random_points(primitive_grid: list[Grid], r: int, seed: int = 42) -> np.ndar
     random.seed(seed)
     x = []
     for g in primitive_grid:
-        pts = random.sample(list(g.grid.flatten()), r, seed=seed)
+        pts = random.sample(list(g.grid.flatten()), r)
         x.append(pts)
     return np.array(x).T
 
@@ -350,6 +351,11 @@ class TensorRankOptimization(Model):
         self.data(primitive_grids, r)
 
     def data(self, primitive_grids: list[Grid], r: int):
+        """
+        Args:
+          primitive_grids: list of f one-dimensional Grids (Ni x 1)
+          r: skeleton rank
+        """
         self.primitive_grids = primitive_grids
         self.r = r
 
@@ -393,6 +399,11 @@ class MatrixTrainOptimization(Model):
         self.r = r
 
     def data(self, primitive_grids: list[Grid], r: int):
+        """
+        Args:
+          primitive_grids: list of f one-dimensional Grids (Ni x 1)
+          r: skeleton rank
+        """
         self.primitive_grids = primitive_grids
         self.r = r
 
