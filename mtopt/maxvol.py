@@ -6,10 +6,10 @@ algorithms for tall matrices:
 
 * :func:`maxvol` finds a square submatrix of approximately maximal volume
   (i.e., with near-maximal absolute determinant).
-* :func:`maxvol_rect` extends this to rectangular submatrices by greedily
+* :func:`maxvol_rectangular` extends this to rectangular submatrices by greedily
   adding rows to the initial square maxvol selection.
 
-The implementations are adapted from the `teneva` package.
+The implementations are adapted from the `teneva` package by Roman Ellerbrock.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ import numpy as np
 from scipy.linalg import lu, solve_triangular
 
 
-__all__ = ["maxvol", "maxvol_rect"]
+__all__ = ["maxvol", "maxvol_rectangular"]
 
 
 def maxvol(
@@ -162,7 +162,7 @@ def maxvol(
     return row_indices, coeff_matrix
 
 
-def maxvol_rect(
+def maxvol_rectangular(
     matrix: np.ndarray,
     accuracy: float = 1.1,
     min_extra_rows: int = 0,
