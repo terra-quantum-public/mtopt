@@ -131,9 +131,7 @@ def plot_xyz(
         )
     else:
         if len(ranges) != 3:
-            raise ValueError(
-                "`ranges` must be a sequence of three (min, max) pairs."
-            )
+            raise ValueError("`ranges` must be a sequence of three (min, max) pairs.")
         scene_kwargs = dict(
             xaxis=dict(title="x", range=ranges[0], autorange=False),
             yaxis=dict(title="y", range=ranges[1], autorange=False),
@@ -184,7 +182,7 @@ def plot_tensor_train_diagram(
     num_leaves = len(up_leaves(graph))
 
     # Leaf nodes are indexed -1, -2, ..., -num_leaves
-    leaf_positions = [np.array([-( -i - 1), 0.1]) for i in range(-num_leaves, 0)]
+    leaf_positions = [np.array([-(-i - 1), 0.1]) for i in range(-num_leaves, 0)]
     core_positions = [np.array([-i, 0.0]) for i in range(num_leaves)]
     positions_array = leaf_positions + core_positions
 
@@ -369,7 +367,9 @@ def plot_tree(
     num_leaves = len(up_leaves(graph))
     leaf_grid = np.linspace(0.0, 1.0, num_leaves)
 
-    pos: dict[Any, tuple[float, float]] = {node: (0.0, 0.0) for node in sorted(graph.nodes)}
+    pos: dict[Any, tuple[float, float]] = {
+        node: (0.0, 0.0) for node in sorted(graph.nodes)
+    }
 
     for node in sorted(graph.nodes):
         layer = graph.nodes[node]["layer"]
@@ -383,7 +383,9 @@ def plot_tree(
             # Internal node: center over its children
             child_nodes = children(graph, node)
             if child_nodes:
-                child_positions = np.array([pos[c][0] for c in child_nodes], dtype=float)
+                child_positions = np.array(
+                    [pos[c][0] for c in child_nodes], dtype=float
+                )
                 x = float(np.mean(child_positions))
             else:
                 x = 0.0
@@ -395,9 +397,7 @@ def plot_tree(
 
     if draw_ranks:
         ranks = nx.get_edge_attributes(graph, "r")
-        nx.draw_networkx_edge_labels(
-            graph, pos, edge_labels=ranks, font_size=18, ax=ax
-        )
+        nx.draw_networkx_edge_labels(graph, pos, edge_labels=ranks, font_size=18, ax=ax)
 
     return ax
 
@@ -450,7 +450,9 @@ def tensor_network_grid_to_dataframe(graph: nx.Graph, objective) -> "pd.DataFram
 
     node_attributes = nx.get_node_attributes(graph, "grid")
     # Extract raw NumPy arrays for each node that has a grid
-    node_grids = {node: grid.grid for node, grid in node_attributes.items() if grid is not None}
+    node_grids = {
+        node: grid.grid for node, grid in node_attributes.items() if grid is not None
+    }
 
     records: List[dict[str, Any]] = []
 
@@ -477,7 +479,7 @@ def tensor_network_grid_to_dataframe(graph: nx.Graph, objective) -> "pd.DataFram
 
     # Expand 'grid' column into x1, x2, ..., xD
     num_coords = len(df.loc[0, "grid"])
-    coord_cols = [f"x{i+1}" for i in range(num_coords)]
+    coord_cols = [f"x{i + 1}" for i in range(num_coords)]
     df[coord_cols] = df["grid"].apply(lambda p: pd.Series(p, index=coord_cols))
 
     df = df.drop(columns="grid")
