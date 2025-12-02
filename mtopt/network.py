@@ -850,66 +850,101 @@ def balanced_tree(
     phys_dim: int = 8,
 ) -> nx.DiGraph:
     r"""
-    Generate a close-to balanced tree tensor network.
+    Construct a close-to balanced tree tensor network.
 
-    Leaves correspond to physical degrees of freedom, internal nodes
-    form a near-balanced tree over these leaves. Each directed edge
-    receives a rank attribute ``"r"``:
+    This closely follows the original PyQuTree implementation:
 
-    * Leaf edges: ``r = phys_dim``.
-    * Internal edges: ``r = min(rank, ∏ r_pre)`` based on predecessor
-      ranks, then symmetrized with their flipped counterparts.
+    * Leaf nodes are negative integers ``-i-1`` connected to internal
+      nodes ``i`` (with a special case for odd ``num_leaves`` to avoid
+      an unnecessary extra internal node).
+    * Internal nodes are non-negative integers, and the internal tree is
+      built via :func:`build_tree`.
+    * Each directed edge carries a rank ``"r"``:
+      - leaf edges get physical dimension ``phys_dim``,
+      - internal edges get a bond dimension up to ``rank``, capped by
+        the product of incoming ranks.
+    * Each *upward* leaf edge (as determined by :func:`up_edge`) is
+      assigned a unique integer ``"coordinate"`` index, which is also
+      copied to its reverse edge. This is what :func:`tensor_network_grid`
+      / :func:`tn_grid` rely on to attach primitive grids.
 
     Parameters
     ----------
     num_leaves :
-        Number of physical leaves.
+        Number of physical leaves / dimensions.
     rank :
-        Target internal rank.
+        Target internal bond dimension.
     phys_dim :
-        Rank assigned to leaf edges (often equal to physical dimension).
+        Physical dimension (e.g. primitive grid size) on each leaf edge.
 
     Returns
     -------
-    nx.DiGraph
-        Directed balanced tree graph with edge attribute ``"r"`` set.
+    DiGraph
+        Directed graph representing the balanced tree tensor network.
     """
     graph = nx.DiGraph()
 
-    # Leaf edges: connect physical leaves to internal nodes
+    # ------------------------------------------------------------------
+    # 1. Leaf edges: (-i-1, i) and their reverse.
+    #    For odd num_leaves, we start from 1 (PyQuTree "odd-leaf" trick).
+    # ------------------------------------------------------------------
     start = num_leaves % 2  # special case for odd number of leaves
     for i in range(start, num_leaves):
         edge = (-i - 1, i)
         graph.add_edge(edge[0], edge[1])
         graph.add_edge(edge[1], edge[0])
 
-    # Build internal tree structure
+    # ------------------------------------------------------------------
+    # 2. Internal tree structure using build_tree(num_leaves)
+    # ------------------------------------------------------------------
     tree_edges = build_tree(num_leaves)
     for edge in tree_edges:
         graph.add_edge(edge[0], edge[1])
 
-    # Add reverse edges for internal tree
     for edge in reversed(tree_edges):
         graph.add_edge(edge[1], edge[0])
 
-    # First pass: assign ranks
+    # ------------------------------------------------------------------
+    # 3. Assign ranks "r" (same logic as original code)
+    # ------------------------------------------------------------------
     for edge in sweep(graph):
         if not is_leaf(edge, graph):
-            predecessors = pre_edges(graph, edge, remove_flipped=True)
-            r_max = (
-                int(np.prod(collect(graph, predecessors, "r")))
-                if predecessors
-                else rank
-            )
+            pre = pre_edges(graph, edge, remove_flipped=True)
+            if pre:
+                r_max = int(np.prod(collect(graph, pre, "r")))
+            else:
+                # Root or degenerate case: just use rank
+                r_max = rank
             graph.edges[edge]["r"] = min(rank, r_max)
         else:
+            # Leaf edges get physical dimension
             graph.edges[edge]["r"] = phys_dim
 
-    # Second pass: symmetrize ranks between flipped edges
+    # Ensure symmetry: r(edge) = r(flip(edge)) for internal edges
     for edge in sweep(graph):
         if not is_leaf(edge, graph):
-            r_val = graph.edges[edge]["r"]
-            other = graph.edges[flip(edge)]["r"]
-            graph.edges[edge]["r"] = min(r_val, other)
+            r_edge = graph.edges[edge]["r"]
+            r_other = graph.edges[flip(edge)]["r"]
+            graph.edges[edge]["r"] = min(r_edge, r_other)
+
+    # ------------------------------------------------------------------
+    # 4. Assign "coordinate" to each upward leaf edge and its reverse.
+    # ------------------------------------------------------------------
+    leaf_edges_up = [
+        edge for edge in graph.edges if is_leaf(edge, graph) and up_edge(edge, graph)
+    ]
+
+    # Sort for deterministic coordinate ordering
+    leaf_edges_up = sorted(leaf_edges_up, key=lambda e: (e[1], e[0]))
+
+    if len(leaf_edges_up) != num_leaves:
+        raise ValueError(
+            f"balanced_tree internal check failed: expected {num_leaves} "
+            f"upward leaf edges, found {len(leaf_edges_up)}."
+        )
+
+    for coord, edge in enumerate(leaf_edges_up):
+        graph.edges[edge]["coordinate"] = coord
+        graph.edges[flip(edge)]["coordinate"] = coord
 
     return graph
