@@ -47,7 +47,7 @@ __all__ = [
     "up_edges_by_distance_to_root",
     "sweep",
     "up_sweep",
-    "rsweep",
+    "reverse_sweep",
     "add_leaves",
     "root",
     "up_leaves",
@@ -376,7 +376,7 @@ def up_sweep(
     return sweep_edges
 
 
-def rsweep(graph: nx.DiGraph) -> List[Tuple[int, int]]:
+def reverse_sweep(graph: nx.DiGraph) -> List[Tuple[int, int]]:
     r"""
     Reverse sweep: reverse of :func:`sweep`.
 
