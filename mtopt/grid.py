@@ -52,7 +52,7 @@ __all__ = [
     "cartesian_product",
     "direct_sum",
     "build_node_grid",
-    "tn_grid",
+    "tensor_network_grid",
     "transform_node_grid",
     "regularized_inverse",
     "maxvol_grids",
@@ -530,7 +530,7 @@ def build_node_grid(graph: Any) -> None:
         graph.nodes[node]["grid"] = grid
 
 
-def tn_grid(
+def tensor_network_grid(
     graph: Any,
     primitive_grid: Sequence[np.ndarray],
     start_grid: np.ndarray | None = None,
