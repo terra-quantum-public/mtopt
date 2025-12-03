@@ -14,15 +14,33 @@ This code is adapted from the PyQuTree package by Roman Ellerbrock.
 Co-authored and modified by Aleksandr Berezutskii.
 """
 
+from __future__ import annotations
+
 import random
 import itertools
-from typing import Callable
+from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
+import pandas as pd
+import networkx as nx
 from scipy.optimize import linear_sum_assignment
 
 from mtopt.maxvol import maxvol
-from mtopt.grid import Grid, cartesian_product
+from mtopt.tensor import Tensor
+from mtopt.grid import (
+    tensor_network_grid,
+    regularized_inverse,
+    cartesian_product,
+    maxvol_grids,
+    Grid,
+)
+from mtopt.network import (
+    star_sweep,
+    pre_edges,
+    collect,
+    sweep,
+    flip,
+)
 
 
 class Model:
@@ -432,3 +450,377 @@ class MatrixTrainOptimization(Model):
                 )
 
         return grid, vmat
+
+
+class OptimizationLogger:
+    r"""
+    Simple pandas-based logger for optimization iterations.
+
+    The logger stores each record (a mapping of column names to values)
+    in an internal :class:`pandas.DataFrame`. It additionally provides a
+    string representation that highlights the row with minimal objective
+    value in the column ``"f"``.
+
+    Attributes
+    ----------
+    dataframe : pandas.DataFrame
+        Accumulated log of all records.
+    """
+
+    def __init__(self) -> None:
+        self.dataframe: pd.DataFrame = pd.DataFrame()
+
+    def __call__(self, record: Mapping[str, Any]) -> None:
+        r"""
+        Append a single record to the internal dataframe.
+
+        Parameters
+        ----------
+        record :
+            Mapping from column name to value. Typical keys include
+            ``"x1"``, ``"x2"``, ..., and ``"f"`` for the objective.
+        """
+        self.dataframe = pd.concat(
+            [self.dataframe, pd.DataFrame(record, index=[0])],
+            ignore_index=True,
+        )
+
+    def __str__(self) -> str:  # pragma: no cover - mostly formatting
+        if "f" not in self.dataframe.columns or self.dataframe.empty:
+            return "No logged records."
+
+        best_idx = self.dataframe["f"].idxmin()
+        best_row = self.dataframe.loc[best_idx]
+        return f"Optimal value:\n{best_row}"
+
+
+def numpy_array_to_tuple(
+    array: np.ndarray,
+    precision: int = 8,
+) -> Tuple[float, ...]:
+    r"""
+    Convert a NumPy array to a rounded tuple for use as a cache key.
+
+    Parameters
+    ----------
+    array :
+        Input array-like object. It is flattened before rounding.
+    precision :
+        Number of decimal places to keep when rounding.
+
+    Returns
+    -------
+    tuple of float
+        Rounded entries of ``array`` as a 1D tuple.
+    """
+    arr = np.asarray(array, dtype=float).ravel()
+    rounded = np.round(arr, precision)
+    return tuple(float(x) for x in rounded)
+
+
+class Objective:
+    r"""
+    Cached and logged objective function wrapper.
+
+    This class wraps a scalar objective function and provides:
+
+    * memoization via a dictionary cache keyed by rounded input points,
+    * a simple logging facility (via :class:`OptimizationLogger`) that
+      stores function values and arbitrary metadata,
+    * a post-processing ``transformer`` applied to raw objective values.
+
+    Parameters
+    ----------
+    error_fn :
+        Callable ``error_fn(x)`` that evaluates the raw objective value
+        at a point ``x`` (1D array-like).
+    transformer :
+        Optional callable ``transformer(f)`` applied to the raw objective
+        value before returning. If ``None``, the identity transform is
+        used.
+
+    Attributes
+    ----------
+    error_fn : callable
+        Underlying raw objective function.
+    transformer : callable
+        Transformation applied to the raw objective values.
+    logger : OptimizationLogger
+        Logger storing evaluation history.
+    cache : dict
+        Maps rounded-point tuples to raw objective values.
+    cache_hits : int
+        Number of times a cached value was reused.
+    function_calls : int
+        Number of actual calls to ``error_fn``.
+    """
+
+    def __init__(
+        self,
+        error_fn: Callable[[np.ndarray], float],
+        transformer: Optional[Callable[[float], float]] = None,
+    ) -> None:
+        self.error_fn = error_fn
+        self.transformer = transformer or (lambda value: value)
+        self.logger = OptimizationLogger()
+        self.cache: Dict[Tuple[float, ...], float] = {}
+        self.cache_hits: int = 0
+        self.function_calls: int = 0
+
+    def __call__(self, x: np.ndarray, **kwargs: Any) -> float:
+        r"""
+        Evaluate the objective at a point, with caching and logging.
+
+        Parameters
+        ----------
+        x :
+            Point at which to evaluate the objective. Will be converted
+            to a 1D :class:`numpy.ndarray`.
+        **kwargs :
+            Additional metadata to log (for example ``sweep=..``,
+            ``node=..``). If provided, the point and metadata are stored
+            via :class:`OptimizationLogger`.
+
+        Returns
+        -------
+        float
+            Transformed objective value
+            ``transformer(error_fn(x))``.
+
+        Notes
+        -----
+        The cache key is built from the rounded coordinates of ``x`` via
+        :func:`numpy_array_to_tuple`. Cached values are stored in terms
+        of **raw** objective values (i.e. before applying
+        ``transformer``).
+        """
+        x_array = np.asarray(x, dtype=float).ravel()
+        key = numpy_array_to_tuple(x_array)
+
+        # Cache lookup
+        if key in self.cache:
+            self.cache_hits += 1
+            raw_value = self.cache[key]
+            return self.transformer(raw_value)
+
+        # Actual evaluation
+        raw_value = self.error_fn(x_array)
+        transformed_value = self.transformer(raw_value)
+
+        # Store in cache
+        self.cache[key] = raw_value
+        self.function_calls += 1
+
+        # Logging
+        if kwargs:
+            coord_dict = {f"x{i + 1}": key[i] for i in range(len(key))}
+            self.logger({**coord_dict, "f": raw_value, **kwargs})
+
+        return transformed_value
+
+    def __str__(self) -> str:  # pragma: no cover - mostly formatting
+        num_function = self.function_calls
+        num_cache = self.cache_hits
+        total_calls = num_function + num_cache
+
+        return (
+            f"{self.logger}\n\n"
+            f"Number of objective function calls: {num_function}\n"
+            f"Number of cached function accesses: {num_cache}\n"
+            f"Total number of calls: {total_calls}"
+        )
+
+
+def tree_tensor_network_optimizer_step(
+    graph: nx.DiGraph,
+    objective: Objective,
+    sweep_id: int,
+) -> nx.DiGraph:
+    r"""
+    Perform a single TTN optimizer sweep over all internal edges.
+
+    For each internal edge (as given by :func:`star_sweep`), this step:
+
+    1. Collects incoming edge grids and forms their Cartesian product.
+    2. Evaluates the objective on this grid (with logging metadata
+       ``sweep`` and ``node``).
+    3. Reshapes values into a tensor with ranks from edge attributes
+       ``"r"`` and wraps it as :class:`Tensor`.
+    4. Runs :func:`maxvol_grids` to pick a subset of rows and compute
+       the corresponding cross inverse.
+    5. Stores the updated grids and tensors on the graph.
+
+    Parameters
+    ----------
+    graph :
+        Tensor-network-like directed graph with edge attributes
+        ``"grid"`` and ``"r"`` and node attributes used to store
+        tensors/grids.
+    objective :
+        :class:`Objective` wrapper for the scalar function to be
+        optimized.
+    sweep_id :
+        Integer label for the current sweep, forwarded to the logger.
+
+    Returns
+    -------
+    DiGraph
+        A **new** graph instance (copy of ``graph``) with updated
+        grids and tensors.
+    """
+    graph = graph.copy()
+
+    for edge in star_sweep(graph, exclude_leaves=True):
+        incoming_edges = list(pre_edges(graph, edge))
+        edge_grids = collect(graph, incoming_edges, "grid")
+        combined_grid = cartesian_product(edge_grids).permute()
+        ranks = collect(graph, incoming_edges, "r")
+
+        kwargs = {"sweep": sweep_id, "node": edge[0]}
+        values = combined_grid.evaluate(objective, **kwargs)
+        tensor_values = values.reshape(ranks)
+
+        node_tensor = Tensor(tensor_values, incoming_edges)
+        next_grid, cross_inv = maxvol_grids(node_tensor, graph, edge)
+
+        # Save results on edge and node
+        graph.edges[edge]["grid"] = next_grid
+        graph.edges[edge]["A"] = cross_inv
+        graph.nodes[edge[0]]["grid"] = combined_grid
+        graph.nodes[edge[0]]["A"] = node_tensor
+
+    return graph
+
+
+def ttn_opt(
+    graph: nx.DiGraph,
+    objective: Objective,
+    num_sweeps: int = 6,
+    primitive_grid: Optional[Sequence[np.ndarray]] = None,
+    start_grid: Optional[np.ndarray] = None,
+) -> nx.DiGraph:
+    r"""
+    Run tensor-network optimization (TTN-style) over several sweeps.
+
+    Parameters
+    ----------
+    graph :
+        Tensor-network graph (e.g. from
+        :func:`mtopt.network.tensor_train_network` or
+        :func:`mtopt.network.balanced_tree`), equipped at least with
+        edge ranks ``"r"`` and leaf coordinates if
+        ``primitive_grid`` is provided.
+    objective :
+        :class:`Objective` wrapper for the scalar function to be
+        optimized.
+    num_sweeps :
+        Number of global sweeps to perform.
+    primitive_grid :
+        Optional sequence of 1D primitive grids, one per coordinate.
+        If provided, :func:`tn_grid` is called once at the beginning to
+        initialize edge and node grids.
+    start_grid :
+        Optional 2D array used by :func:`tn_grid` as a deterministic
+        source of grid points instead of random subsets. See
+        :func:`mtopt.grid.tn_grid` for details.
+
+    Returns
+    -------
+    DiGraph
+        Graph with updated grids and tensors after all sweeps.
+    """
+    graph = graph.copy()
+
+    if primitive_grid is not None:
+        graph = tensor_network_grid(graph, primitive_grid, start_grid=start_grid)
+
+    for sweep_index in range(num_sweeps):
+        graph = tree_tensor_network_optimizer_step(graph, objective, sweep_index)
+
+    return graph
+
+
+def tn_cur(
+    graph: nx.DiGraph,
+    objective: Objective,
+) -> nx.DiGraph:
+    r"""
+    Build CUR-like cross approximation tensors on a tensor network.
+
+    This routine assumes that a tensor network graph already carries
+    edge and node grids (e.g. after :func:`tn_grid` / `tensor_network_grid`)
+    and uses them to construct *consistent* tensors that approximate
+    the objective function in a TTN/Tree-TN fashion:
+
+    1. For each internal node, evaluate the objective on the Cartesian
+       product of its incident edge grids and store the resulting tensor
+       under ``node["A"]``.
+    2. For each internal edge, do the same for its predecessor edges and
+       store the tensor under ``edge["A"]``.
+    3. For each internal edge again, take the grids of both directions
+       (edge and flipped edge), evaluate the objective on their product,
+       and compute a Tikhonov-regularized inverse via
+       :func:`regularized_inverse`. This inverse is stored as a tensor
+       under ``edge["A"]``.
+
+    Parameters
+    ----------
+    graph :
+        Tensor-network-like :class:`networkx.DiGraph` with edge and node
+        grids already attached (e.g. via :func:`tn_grid`).
+    objective :
+        :class:`Objective` wrapper for the scalar function whose CUR-like
+        approximation is being constructed.
+
+    Returns
+    -------
+    DiGraph
+        A **new** graph with tensors ``"A"`` stored both on nodes and
+        edges, representing CUR-like cross approximation factors.
+    """
+    graph = graph.copy()
+
+    # 1. Node tensors
+    for node in graph.nodes():
+        if node < 0:
+            # Skip virtual / auxiliary nodes
+            continue
+
+        incoming_edges = list(graph.in_edges(node))
+        edge_grids = collect(graph, incoming_edges, "grid")
+        combined_grid = cartesian_product(edge_grids).permute()
+        ranks = collect(graph, incoming_edges, "r")
+
+        values = combined_grid.evaluate(objective)
+        tensor_values = values.reshape(ranks)
+
+        node_tensor = Tensor(tensor_values, incoming_edges)
+        graph.nodes[node]["A"] = node_tensor
+
+    # 2. Edge tensors based on predecessors
+    for edge in sweep(graph, include_leaves=False):
+        incoming_edges = list(pre_edges(graph, edge))
+        edge_grids = collect(graph, incoming_edges, "grid")
+        combined_grid = cartesian_product(edge_grids).permute()
+        ranks = collect(graph, incoming_edges, "r")
+
+        values = combined_grid.evaluate(objective)
+        tensor_values = values.reshape(ranks)
+
+        edge_tensor = Tensor(tensor_values, incoming_edges)
+        graph.edges[edge]["A"] = edge_tensor
+
+    # 3. Cross tensors as regularized inverses for each edge pair
+    for edge in sweep(graph, include_leaves=False):
+        edge_pair = [edge, flip(edge)]
+        pair_grids = collect(graph, edge_pair, "grid")
+        combined_grid = cartesian_product(pair_grids).permute()
+        ranks = collect(graph, edge_pair, "r")
+
+        cross_values = combined_grid.evaluate(objective).reshape(ranks)
+        cross_inverse = regularized_inverse(cross_values, lambda_reg=1e-12)
+        cross_tensor = Tensor(cross_inverse, edge_pair)
+
+        graph.edges[edge]["A"] = cross_tensor
+
+    return graph
