@@ -3,11 +3,11 @@ import pandas as pd
 import networkx as nx
 
 from mtopt.optimization import (
-    OptimizationLogger,
+    tree_tensor_network_optimize,
     numpy_array_to_tuple,
+    tensor_network_cur,
+    OptimizationLogger,
     Objective,
-    ttn_opt,
-    tn_cur,
 )
 from mtopt.network import (
     tensor_train_graph,
@@ -123,7 +123,7 @@ def test_ttn_opt_runs_and_populates_tensors():
     objective = Objective(error_fn)
 
     # Run a couple of sweeps
-    graph_out = ttn_opt(
+    graph_out = tree_tensor_network_optimize(
         graph,
         objective,
         num_sweeps=2,
@@ -173,7 +173,7 @@ def test_tn_cur_builds_cur_like_tensors():
 
     objective = Objective(error_fn)
 
-    graph_cur = tn_cur(graph, objective)
+    graph_cur = tensor_network_cur(graph, objective)
 
     # There should be at least one (physical) node with an "A" tensor
     physical_nodes = [n for n in graph_cur.nodes if n >= 0]
