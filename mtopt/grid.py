@@ -536,60 +536,97 @@ def tensor_network_grid(
     start_grid: np.ndarray | None = None,
 ) -> Any:
     r"""
-    Initialize random edge and node grids on a tensor network graph.
+    Initialize edge and node grids on a tensor network graph.
 
-    For each leaf edge, a :class:`Grid` is built from the corresponding
-    primitive grid. For internal edges, grids are constructed as random
-    subsets of Cartesian products of predecessor edge grids. Finally,
-    node grids are built via :func:`build_node_grid`.
+    This routine attaches :class:`Grid` objects to all edges of a
+    tensor-network-like graph and then builds node grids from incident
+    edge grids:
+
+    * For each **leaf edge**, a :class:`Grid` is built directly from the
+      corresponding 1D primitive grid. The edge's rank ``"r"`` is
+      **synchronized** to the number of points in this primitive grid,
+      i.e. ``edge["r"] = edge["grid"].num_points()``.
+    * For each **internal edge**, a grid is constructed as a random
+      subset of the Cartesian product of its predecessor edges' grids,
+      with the number of points equal to the edge rank ``"r"``.
+      Optionally, points can be taken from a global ``start_grid``
+      instead of sampled randomly.
+    * Finally, for each non-leaf node, a node grid is built as the
+      Cartesian product of its incoming edge grids via
+      :func:`build_node_grid`.
 
     Parameters
     ----------
     graph :
         Tensor-network-like graph object. Expected to support the helpers
         :func:`up_leaves`, :func:`sweep`, :func:`pre_edges`, and
-        :func:`collect`, and to carry edge attributes ``"coordinate"`` and
-        ``"r"``.
+        :func:`collect`, and to carry edge attributes:
+
+        * ``"coordinate"`` on leaf edges (integer index into
+          ``primitive_grid``),
+        * ``"r"`` on internal edges (desired rank / number of grid points).
     primitive_grid :
-        Sequence of primitive grids, one per coordinate. ``primitive_grid[k]``
-        must be indexable and suitable as input to :class:`Grid` for
-        coordinate ``k``.
+        Sequence of primitive 1D grids, one per coordinate. The element
+        ``primitive_grid[k]`` must be indexable and suitable as input to
+        :class:`Grid` for coordinate ``k``.
     start_grid :
         Optional 2D array providing an initial global grid to be sampled
-        instead of random selection. Must satisfy
-        ``start_grid.shape[0] >= r`` for all edge ranks ``r`` used in the
-        network. If provided, the rows of ``start_grid`` are used in the
-        order implied by ``next_grid.coords``.
+        instead of random selection for internal edges. For every internal
+        edge with rank ``r``, it must hold that
+        ``start_grid.shape[0] >= r``. If provided, the first ``r`` rows of
+        ``start_grid`` are used, reordered according to the coordinate
+        ordering of each internal edge grid.
 
     Returns
     -------
     graph :
         The same graph object with additional ``"grid"`` attributes attached
-        to edges and nodes.
+        to edges and nodes. Leaf edges also have their rank ``"r"``
+        synchronized with the number of primitive grid points.
+
+    Notes
+    -----
+    This function **overwrites** the ``"r"`` attribute of leaf edges to
+    ensure consistency between the leaf rank and the size of the attached
+    primitive grid. Internal edge ranks are left unchanged.
     """
-    # Leaf edge grids
+    # ------------------------------------------------------------------
+    # Leaf edge grids: attach primitive grids and synchronize ranks
+    # ------------------------------------------------------------------
     for leaf in sorted(up_leaves(graph)):
         coord = graph.edges[leaf]["coordinate"]
-        graph.edges[leaf]["grid"] = Grid(primitive_grid[coord], coord)
 
-    # Internal edge grids
+        # Build the leaf grid from the corresponding primitive 1D grid
+        leaf_grid = Grid(primitive_grid[coord], coord)
+        graph.edges[leaf]["grid"] = leaf_grid
+
+        # IMPORTANT: keep the leaf rank consistent with the number of points
+        graph.edges[leaf]["r"] = leaf_grid.num_points()
+
+    # ------------------------------------------------------------------
+    # Internal edge grids: random subsets / start_grid-based subsets
+    # ------------------------------------------------------------------
     for edge in sweep(graph, include_leaves=False):
-        r = graph.edges[edge]["r"]
-        pre = pre_edges(graph, edge, remove_flipped=True)
-        pre_grids: List[Grid] = collect(graph, pre, "grid")
-        next_grid = cartesian_product(pre_grids).random_subset(r)
+        rank = graph.edges[edge]["r"]
+        predecessor_edges = pre_edges(graph, edge, remove_flipped=True)
+        predecessor_grids: List[Grid] = collect(graph, predecessor_edges, "grid")
+
+        next_grid = cartesian_product(predecessor_grids).random_subset(rank)
 
         if start_grid is not None:
-            if start_grid.shape[0] < r:
+            if start_grid.shape[0] < rank:
                 raise ValueError(
-                    f"start_grid must have at least r={r} rows, "
+                    f"start_grid must have at least r={rank} rows, "
                     f"got {start_grid.shape[0]}."
                 )
             # Align columns with the coordinate order of next_grid
-            next_grid.grid = start_grid[:r, next_grid.coords]
+            next_grid.grid = start_grid[:rank, next_grid.coords]
 
         graph.edges[edge]["grid"] = next_grid
 
+    # ------------------------------------------------------------------
+    # Node grids from incident edge grids
+    # ------------------------------------------------------------------
     build_node_grid(graph)
     return graph
 
