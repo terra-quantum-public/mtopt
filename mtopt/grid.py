@@ -542,11 +542,11 @@ def tensor_network_grid(
     tensor-network-like graph and then builds node grids from incident
     edge grids:
 
-    * For each **leaf edge**, a :class:`Grid` is built directly from the
+    * For each leaf edge, a :class:`Grid` is built directly from the
       corresponding 1D primitive grid. The edge's rank ``"r"`` is
       **synchronized** to the number of points in this primitive grid,
       i.e. ``edge["r"] = edge["grid"].num_points()``.
-    * For each **internal edge**, a grid is constructed as a random
+    * For each internal edge, a grid is constructed as a random
       subset of the Cartesian product of its predecessor edges' grids,
       with the number of points equal to the edge rank ``"r"``.
       Optionally, points can be taken from a global ``start_grid``
@@ -586,7 +586,7 @@ def tensor_network_grid(
 
     Notes
     -----
-    This function **overwrites** the ``"r"`` attribute of leaf edges to
+    This function overwrites the ``r`` attribute of leaf edges to
     ensure consistency between the leaf rank and the size of the attached
     primitive grid. Internal edge ranks are left unchanged.
     """
