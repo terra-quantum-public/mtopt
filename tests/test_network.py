@@ -373,10 +373,7 @@ def test_tensor_network_grid_attaches_leaf_grids():
 
     graph = balanced_tree(num_leaves=num_leaves, rank=rank, phys_dim=num_points)
 
-    primitive_grids = [
-        np.linspace(0.0, 1.0, num_points)
-        for _ in range(num_leaves)
-    ]
+    primitive_grids = [np.linspace(0.0, 1.0, num_points) for _ in range(num_leaves)]
 
     graph = tensor_network_grid(graph, primitive_grids)
 
