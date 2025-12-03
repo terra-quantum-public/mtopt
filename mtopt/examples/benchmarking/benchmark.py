@@ -13,37 +13,32 @@ import argparse
 
 from functions import FUNCTION_REGISTRY, F_OPT, get_tests, resolve_f_opt_map
 from runner import compare_all, save_best_errors_csv
-from plotting import make_plots
+from plot import make_plots
 
 
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     p = argparse.ArgumentParser(description="Benchmark runner")
-    p.add_argument(
-        "--num_dimensions",type=int, default=3, help="Problem dimension"
-    )
+    p.add_argument("--num_dimensions", type=int, default=3, help="Problem dimension")
     p.add_argument(
         "--num_grid_points", type=int, default=10, help="Grid points per dimension"
     )
+    p.add_argument("--ranks", nargs="+", type=int, default=list(range(1, 5)))
+    p.add_argument("--num_sweeps", type=int, default=6, help="Number of sweeps")
+    p.add_argument("--seed", nargs="+", type=int, default=list(range(10)))
     p.add_argument(
-        "--ranks", nargs="+", type=int, default=list(range(1, 5))
+        "--num_experiments", type=int, help="Number of experiments to average over"
     )
     p.add_argument(
-        "--num_sweeps", type=int, default=6, help="Number of sweeps"
-    )
-    p.add_argument(
-        "--seed", nargs="+", type=int, default=list(range(10))
-    )
-    p.add_argument(
-        "--num_experiments", type=int,
-        help="Number of experiments to average over"
-    )
-    p.add_argument(
-        "--methods", type=str, nargs="+", default=["TRC", "MT", "TTOpt"],
+        "--methods",
+        type=str,
+        nargs="+",
+        default=["TRC", "MT", "TTOpt"],
         help="Optimizers to run (TRC, MT, TTOpt)",
     )
     p.add_argument(
-        "--functions", nargs="+",
+        "--functions",
+        nargs="+",
         help=f"Functions to run (choices: {list(FUNCTION_REGISTRY.keys())})",
     )
     return p.parse_args()

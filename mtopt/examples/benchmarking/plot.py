@@ -1,4 +1,4 @@
-""" Plotting functions for benchmark results. """
+"""Plotting functions for benchmark results."""
 
 from __future__ import annotations
 from typing import Dict, Optional, List
@@ -18,7 +18,7 @@ def _save(fig, path: str) -> None:
 
 def _method_colors(methods: List[str]) -> Dict[str, str]:
     cycle = plt.rcParams.get("axes.prop_cycle", None)
-    colors = (cycle.by_key().get("color", []) if cycle else [])
+    colors = cycle.by_key().get("color", []) if cycle else []
     if not colors:
         colors = [f"C{i}" for i in range(10)]
     # preserve the incoming order
@@ -31,13 +31,13 @@ def _slug(s: str) -> str:
 
 def _fname(outdir: str, func: str, plot_type: str, n_exp: int) -> str:
     return os.path.join(
-        outdir,
-        f"func_{_slug(func)}_type_{plot_type}_num_experiments_{n_exp}.png"
+        outdir, f"func_{_slug(func)}_type_{plot_type}_num_experiments_{n_exp}.png"
     )
 
 
-def _agg_best_points(dff: pd.DataFrame, methods: list[str], ranks: list[int],
-                     tol: float = 1e-12) -> pd.DataFrame:
+def _agg_best_points(
+    dff: pd.DataFrame, methods: list[str], ranks: list[int], tol: float = 1e-12
+) -> pd.DataFrame:
     rows = []
     for m in methods:
         for r in ranks:
@@ -48,12 +48,14 @@ def _agg_best_points(dff: pd.DataFrame, methods: list[str], ranks: list[int],
             cand = g[np.isclose(g["error"].values, err_min, rtol=1e-6, atol=tol)]
             # tie-break by minimal calls
             idx = cand["Objective calls"].idxmin()
-            rows.append({
-                "Method": m,
-                "Rank": int(r),
-                "calls": float(g.loc[idx, "Objective calls"]),
-                "error": float(g.loc[idx, "error"]),
-            })
+            rows.append(
+                {
+                    "Method": m,
+                    "Rank": int(r),
+                    "calls": float(g.loc[idx, "Objective calls"]),
+                    "error": float(g.loc[idx, "error"]),
+                }
+            )
     return pd.DataFrame(rows)
 
 
@@ -66,10 +68,14 @@ def _plot_best_error_vs_calls(ax, best: pd.DataFrame, methods: list[str]) -> Non
         ax.plot(sm["calls"], sm["error"], "-o", label=m, color=colors[m], alpha=0.95)
         # annotate with rank
         for _, row in sm.iterrows():
-            ax.annotate(str(int(row["Rank"])),
-                        (row["calls"], row["error"]),
-                        textcoords="offset points", xytext=(5, 0),
-                        fontsize=8, color=colors[m])
+            ax.annotate(
+                str(int(row["Rank"])),
+                (row["calls"], row["error"]),
+                textcoords="offset points",
+                xytext=(5, 0),
+                fontsize=8,
+                color=colors[m],
+            )
     ax.set_xscale("log")
     ax.set_xlabel("Objective calls (best run)")
     ax.set_ylabel("Best error (best_f - f_opt)")
@@ -77,21 +83,29 @@ def _plot_best_error_vs_calls(ax, best: pd.DataFrame, methods: list[str]) -> Non
     ax.legend(title="Method")
 
 
-def _scatter_with_sem(ax, df: pd.DataFrame, ycol: str,
-                   ranks: list[int], methods: list[str],
-                   title: str, ylabel: str,
-                   logy: bool = False,
-                   offset: float = 0.12) -> None:
+def _scatter_with_sem(
+    ax,
+    df: pd.DataFrame,
+    ycol: str,
+    ranks: list[int],
+    methods: list[str],
+    title: str,
+    ylabel: str,
+    logy: bool = False,
+    offset: float = 0.12,
+) -> None:
     """
     Plot mean ± SEM across experiments for each (Method, Rank) as jittered dots with error bars.
     """
     # aggregate over experiments
     g = (
         df.groupby(["Method", "Rank"])[ycol]
-          .agg(n="count",
-               mean="mean",
-               sem=lambda s: s.std(ddof=1) / np.sqrt(max(len(s), 1)))
-          .reset_index()
+        .agg(
+            n="count",
+            mean="mean",
+            sem=lambda s: s.std(ddof=1) / np.sqrt(max(len(s), 1)),
+        )
+        .reset_index()
     )
 
     # consistent order & colors
@@ -107,9 +121,17 @@ def _scatter_with_sem(ax, df: pd.DataFrame, ycol: str,
         x = np.asarray(ranks_sorted, dtype=float) + (j - (M - 1) / 2.0) * offset
 
         ax.errorbar(
-            x, y, yerr=yerr,
-            fmt="-o", lw=1.0, ms=4, capsize=2,
-            color=colors[m], ecolor="black", alpha=0.9, label=m
+            x,
+            y,
+            yerr=yerr,
+            fmt="-o",
+            lw=1.0,
+            ms=4,
+            capsize=2,
+            color=colors[m],
+            ecolor="black",
+            alpha=0.9,
+            label=m,
         )
 
     ax.set_xlabel("Rank")
@@ -125,7 +147,11 @@ def _scatter_with_sem(ax, df: pd.DataFrame, ycol: str,
     ax.legend(title="Method")
 
 
-def make_plots(df_results: pd.DataFrame, f_opt_map: Dict[str, Optional[float]], outdir: str = "plots") -> None:
+def make_plots(
+    df_results: pd.DataFrame,
+    f_opt_map: Dict[str, Optional[float]],
+    outdir: str = "plots",
+) -> None:
     # sanity check
     required = {"Function", "Method", "Rank", "best_f", "Objective calls"}
     missing = required - set(df_results.columns)
@@ -134,7 +160,9 @@ def make_plots(df_results: pd.DataFrame, f_opt_map: Dict[str, Optional[float]], 
 
     df = df_results.copy()
     df["f_opt"] = df["Function"].map(f_opt_map)
-    df["error"] = np.where(df["f_opt"].notna(), np.maximum(df["best_f"] - df["f_opt"], 0.0), np.nan)
+    df["error"] = np.where(
+        df["f_opt"].notna(), np.maximum(df["best_f"] - df["f_opt"], 0.0), np.nan
+    )
 
     functions = sorted(df["Function"].unique())
 
@@ -143,13 +171,20 @@ def make_plots(df_results: pd.DataFrame, f_opt_map: Dict[str, Optional[float]], 
         methods = sorted(dff["Method"].unique())
         ranks = sorted(dff["Rank"].unique().tolist())
         # infer number of experiments per function
-        n_exp = int(dff["Experiment"].nunique() if "Experiment" in dff.columns
-                    else dff.groupby(["Method", "Rank"]).size().max())
+        n_exp = int(
+            dff["Experiment"].nunique()
+            if "Experiment" in dff.columns
+            else dff.groupby(["Method", "Rank"]).size().max()
+        )
 
         # 1) dots: best function value by rank & method
         fig, ax = plt.subplots()
         _scatter_with_sem(
-            ax, dff, ycol="best_f", ranks=ranks, methods=methods,
+            ax,
+            dff,
+            ycol="best_f",
+            ranks=ranks,
+            methods=methods,
             title=f"{func}: Best function value vs rank (mean ± SEM)",
             ylabel="Best found f(x)",
             logy=False,
@@ -159,7 +194,11 @@ def make_plots(df_results: pd.DataFrame, f_opt_map: Dict[str, Optional[float]], 
         # 2) dots: objective calls by rank & method (already dots)
         fig, ax = plt.subplots()
         _scatter_with_sem(
-            ax, dff, ycol="Objective calls", ranks=ranks, methods=methods,
+            ax,
+            dff,
+            ycol="Objective calls",
+            ranks=ranks,
+            methods=methods,
             title=f"{func}: Objective calls vs rank (mean ± SEM)",
             ylabel="Objective calls (mean ± SEM across experiments)",
             logy=False,
@@ -176,12 +215,18 @@ def make_plots(df_results: pd.DataFrame, f_opt_map: Dict[str, Optional[float]], 
                 vmin, vmax = np.nanmin(vals), np.nanmax(vals)
                 use_logy = (vmin > 0) and (vmax / max(vmin, 1e-300) > 10)
             _scatter_with_sem(
-                ax, dff, ycol="error", ranks=ranks, methods=methods,
+                ax,
+                dff,
+                ycol="error",
+                ranks=ranks,
+                methods=methods,
                 title=f"{func}: Best error vs rank (mean ± SEM)",
                 ylabel="Best error (best_f - f_opt)",
                 logy=use_logy,
             )
-            _save(fig, _fname(outdir, func, plot_type="dots_error_vs_rank", n_exp=n_exp))
+            _save(
+                fig, _fname(outdir, func, plot_type="dots_error_vs_rank", n_exp=n_exp)
+            )
 
         # 4) Best-only summary: error vs objective calls (one point per method×rank)
         if pd.notna(f_opt_map.get(func, np.nan)):
@@ -189,5 +234,10 @@ def make_plots(df_results: pd.DataFrame, f_opt_map: Dict[str, Optional[float]], 
             if not best.empty:
                 fig, ax = plt.subplots()
                 _plot_best_error_vs_calls(ax, best, methods=methods)
-                ax.set_title(f"{func}: Best error vs calls (annotated by rank and method)")
-                _save(fig, _fname(outdir, func, plot_type="best_error_vs_calls", n_exp=n_exp))
+                ax.set_title(
+                    f"{func}: Best error vs calls (annotated by rank and method)"
+                )
+                _save(
+                    fig,
+                    _fname(outdir, func, plot_type="best_error_vs_calls", n_exp=n_exp),
+                )
