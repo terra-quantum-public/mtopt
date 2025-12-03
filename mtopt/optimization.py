@@ -692,7 +692,7 @@ def tree_tensor_network_optimizer_step(
     return graph
 
 
-def ttn_opt(
+def tree_tensor_network_optimize(
     graph: nx.DiGraph,
     objective: Objective,
     num_sweeps: int = 6,
@@ -740,7 +740,7 @@ def ttn_opt(
     return graph
 
 
-def tn_cur(
+def tensor_network_cur(
     graph: nx.DiGraph,
     objective: Objective,
 ) -> nx.DiGraph:
