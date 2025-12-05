@@ -20,6 +20,14 @@ DOCS_SOURCE_ABS="${PROJECT_ROOT}/${DOCS_SOURCE_DIR}"
 DOCS_BUILD_ABS="${PROJECT_ROOT}/${DOCS_BUILD_DIR}"
 API_OUTPUT_DIR="${DOCS_SOURCE_ABS}/${API_OUTPUT_SUBDIR}"
 
+# Safety check: ensure API_OUTPUT_SUBDIR is a real subdirectory, not docs/source itself
+if [[ -z "${API_OUTPUT_SUBDIR}" || "${API_OUTPUT_SUBDIR}" == "." || "${API_OUTPUT_SUBDIR}" == ".." ]]; then
+    echo "ERROR: API_OUTPUT_SUBDIR='${API_OUTPUT_SUBDIR}' is unsafe."
+    echo "       Please set API_OUTPUT_SUBDIR to a subdirectory like 'api' to avoid"
+    echo "       overwriting top-level files such as index.rst."
+    exit 1
+fi
+
 # Sanity checks
 if [[ ! -d "${PACKAGE_ABS}" ]]; then
     echo "ERROR: Package directory not found: ${PACKAGE_ABS}"
@@ -43,7 +51,7 @@ fi
 echo "==> Generating .rst API docs from ${PACKAGE_PATH} into ${API_OUTPUT_DIR}"
 mkdir -p "${API_OUTPUT_DIR}"
 
-# Optionally clean previous generated .rst files in that directory
+# Clean previously generated .rst files in that directory
 find "${API_OUTPUT_DIR}" -maxdepth 1 -name "*.rst" -delete || true
 
 # Generate API docs (.rst files)
@@ -59,6 +67,7 @@ mkdir -p "${DOCS_BUILD_ABS}"
     -b html \
     "${DOCS_SOURCE_ABS}" \
     "${DOCS_BUILD_ABS}"
+
 echo "==> Done."
 echo "    - Generated .rst files: ${API_OUTPUT_DIR}"
 echo "    - HTML documentation:   ${DOCS_BUILD_ABS}"

@@ -9,7 +9,7 @@ algorithms for tall matrices:
 * :func:`maxvol_rectangular` extends this to rectangular submatrices by greedily
   adding rows to the initial square maxvol selection.
 
-The implementations are adapted from the `teneva` package by Roman Ellerbrock.
+The implementations are adapted from the teneva package by Roman Ellerbrock.
 """
 
 from __future__ import annotations
