@@ -1,5 +1,5 @@
 ---
-title: 'mtopt: tensor rank cross and matrix train representations for sample‑efficient black‑box optimization'
+title: 'mtopt: tensor rank cross and matrix train cross representations for sample‑efficient black‑box optimization'
 tags:
   - python
   - optimization
@@ -17,71 +17,95 @@ authors:
 affiliations:
  - name: Terra Quantum AG, Freddie-Mercury Str. 5, Munich, DE 80979
    index: 1
-date: 01 November 2025
+date: 01 February 2026
 bibliography: paper.bib
 ---
 
 # Summary
 
-**mtopt** is a lightweight Python library that implements two optimizers for black-box optimization on discrete grids: **Tensor Rank Cross (TRC)** and **Matrix Train (MT)**. Both methods build low‑rank tensor representations of the objective from a small number of function evaluations, then extract candidate optima directly from the representations. The package targets use‑cases where objective gradients are unavailable or unreliable, and where each function call is expensive.
+**mtopt** is a lightweight Python library that implements two optimizers for black-box optimization on discrete grids by extending matrix cross approximation to two distinct types of tensor networks. The first, **Tensor Rank Cross (TRC)** is a cross approximation for tensor rank decomposition (also called canonical diadic decomposition (Candecomp)). The second, **Matrix Train Cross (MTC)** approximation is a cross approximation that combines features of TRC and Tensor Train (also called Matrix Product State (MPS)) decomposition. Both methods build low‑rank tensor representations of a function from a small number of function evaluations, then extract candidate optima directly from the representations. The package is designed specifically for high-dimensional functions with multiple local minima, where each function evaluation is computationally expensive.
+
 
 # Statement of need
 
-Most real-world optimization tasks are high-dimensional and nonconvex, with little room for extra evaluations. General‑purpose gradient‑free methods (e.g., direct search or evolutionary strategies) are robust but often require many evaluations to locate good solutions. Low‑rank tensor decompositions offer an orthogonal strategy: approximate the discretized objective on a grid with a compact representation and use its structure to propose maximizers/minimizers efficiently. Despite promising results in recent literature [oseledets2010tt][sozykin2022ttopt][dolgov2025tensor], there remains a gap between theory and a practical, lightweight toolchain that exposes these ideas behind a consistent API and strict evaluation budgets.
+Most real-world optimization problems are high-dimensional and nonconvex, with little room for extra evaluations. General‑purpose gradient‑free methods (for example, direct search or evolutionary strategies) are robust but often require many evaluations to locate good solutions. Tensor network decompositions offer an orthogonal strategy: they approximate the function on a discrete grid with a compact representation. In this structure, minima and maxima are obtained automatically as part of the compression[oseledets2010tt][sozykin2022ttopt][dolgov2025tensor]. Here, we present a lightweight toolchain that extends the idea of cross approximation to different tensor network architectures including tree tensor networks, tensor rank decompositions, and a combination of tensor trains and tensor rank decompositions (what we call matrix trains).
 
 # Functionality
 
-* **Tensor Rank Cross (TRC) optimizer.** Performs rank-(r) cross updates on a user-supplied product grid. Each sweep alternates **one-leg mutations** (cross-sampling one primitive while holding others fixed) with **selection** via max-volume or assignment on the evaluated candidate matrix. It returns the updated rank-(r) skeleton (pivot set) and the current incumbent. Rank, number of sweeps, grid resolution, and seeds are user-controlled.
+* **Tensor Rank Cross (TRC) optimizer.** Performs cross approximation for rank-(r) tensor rank decomposition on a user-supplied product grid. Each sweep alternates one-leg updates (cross-approximation on one dimension while holding others fixed) with selection via maximum-volume principle or linear-sum-assignment on the cross matrix. It returns the updated rank-(r) skeleton (pivot set) and the current candidate minima/maxima.
 
-* **Matrix Train (MT) optimizer.** Optimizes an (N)-site matrix-train directly on the grid. The core step **recombines** left/right blocks to form an (r\times r) candidate matrix and uses the **Hungarian (linear-sum) assignment** to pick the next rank-(r) slice, interleaved with one-leg mutation updates. Grouped/segment assignments are supported via a simple grouped assignment routine (experimental).
+* **Matrix Train Cross (MTC) optimizer.** Optimizes a function using cross approximation in an (N)-site matrix-train representation (a hybrid between tensor train and tensor rank decomposition) directly on the grid. The core step partitions dimensions into two groups and recombines them to form an (r\times r) cross matrix. It then uses the Hungarian (linear-sum) assignment to pick the next rank-(r) slice, followed by one-leg updates described above.
 
-* **Search spaces.** Any space that can be discretized into **per-dimension 1D grids**: continuous boxes (e.g., uniform linspaces), categorical/discrete sets, or mixed discrete–continuous spaces by mixing primitives. Custom per-dimension grids are accepted.
+* **Tree Tensor Network (TTN) optimizer.** Performs cross approximation on a user-defined Tree Tensor Network for a given function. The library lets you specify the tree structure manually, or it can construct one automatically as either a nearly balanced tree or a chain (the tensor-train case). Each pass forms local Cartesian subgrids at internal nodes, evaluates the objective, builds edge-wise cross matrices, selects pivots (maximum-volume or linear-sum assignment), and applies one-leg updates. It stops when pivots stabilize or the evaluation budget is reached.
 
-* **Budgets & reproducibility.** Work is bounded by rank, number of sweeps, and grid size; the framework tracks objective-call counts and supports **deterministic seeding** for fair comparisons (common-random-numbers across methods).
+* **Hyperparameters, budgets, and logging.** Topology, ranks, sweeps, 1D grid parameters (uniform or custom), and seeds are user-controlled. Function evaluations are cached and recorded, and the framework tracks objective-call counts. Computational and evaluation cost are bounded by the chosen rank, number of sweeps, and grid size. Deterministic seeding enables fair common-random-numbers comparisons across methods.
 
-* **Benchmarks & baselines.** The repo includes a benchmarking suite with CSV outputs and plots, comparing TRC/MT against **TTOpt** and **SciPy** baselines (Differential Evolution and Dual Annealing).
+* **Benchmarks & baselines.** The repo includes a benchmarking suite with CSV outputs and plots, comparing TRC and MTC against TTOpt and SciPy baselines (Differential Evolution and Dual Annealing). The benchmarks can conveniently be extended to other optimizers.
 
 
 # Minimal example
 
 ```python
 import numpy as np
-from mtopt.grid import Grid, cartesian_product
+from mtopt.grid import Grid, tensor_network_grid, build_node_grid
+from mtopt.network import balanced_tree, root
+from mtopt.optimization import (
+    TensorRankOptimization,
+    MatrixTrainOptimization,
+    Objective,
+    random_grid_points,
+    tree_tensor_network_optimize,
+)
 
-# Black-box objective
-def sphere(x):
+# Black-box objective (accept **kwargs to ignore optimizer metadata like `epoch`)
+def sphere(x, **_):
     x = np.asarray(x, dtype=float)
-    return np.sum(x**2)
+    return float(np.sum(x**2))
 
-# 1) Primitive 1D grids (3 dimensions)
-g0 = Grid(np.linspace(-2.0, 2.0, 51), coords=0)
-g1 = Grid(np.linspace(-2.0, 2.0, 51), coords=1)
-g2 = Grid(np.linspace(-2.0, 2.0, 51), coords=2)
+# 1) Primitive 1D grids
+x0 = np.linspace(-2.0, 2.0, 51)
+x1 = np.linspace(-2.0, 2.0, 51)
+x2 = np.linspace(-2.0, 2.0, 51)
+g0, g1, g2 = Grid(x0, coords=0), Grid(x1, coords=1), Grid(x2, coords=2)
+primitives = [g0, g1, g2]
 
-# 2) 3D Cartesian product and random downsampling
-grid3d = cartesian_product([g0, g1, g2]).random_subset(2000)  # may not include the origin
+r = 6
+epochs = 8
 
-# 3) Evaluate objective and extract the best point from the sampled grid
-values = grid3d.evaluate(sphere)
-i_star = int(np.argmin(values))
-x_star = grid3d.grid[i_star]        # point in R^3
-f_star = float(values[i_star])
+# --- TRC ---
+trc = TensorRankOptimization(primitives, r=r)
+skel_trc = random_grid_points(primitives, r=r, seed=42)
+skel_trc = trc.optimize(skel_trc, function=sphere, num_epochs=epochs)
+vals_trc = skel_trc.evaluate(sphere)
+i_trc = int(np.argmin(vals_trc))
+x_trc, f_trc = skel_trc.grid[i_trc], float(vals_trc[i_trc])
+print("TRC  -> x* =", np.round(x_trc, 4), "f* =", f"{f_trc:.6f}")
 
-print(f"sampled-grid best value ≈ {f_star:.6f}")
-print("x* =", np.round(x_star, 4))
+# --- MTC ---
+mtc = MatrixTrainOptimization(primitives, r=r)
+skel_mtc = random_grid_points(primitives, r=r, seed=42)
+skel_mtc = mtc.optimize(skel_mtc, function=sphere, num_epochs=epochs)
+vals_mtc = skel_mtc.evaluate(sphere)
+i_mtc = int(np.argmin(vals_mtc))
+x_mtc, f_mtc = skel_mtc.grid[i_mtc], float(vals_mtc[i_mtc])
+print("MTC  -> x* =", np.round(x_mtc, 4), "f* =", f"{f_mtc:.6f}")
 
-# 4) Compare with the true minimum of the continuous problem
-x_true = np.zeros(3)
-f_true = 0.0
-dist = np.linalg.norm(x_star - x_true)
-gap = f_star - f_true
+# --- TTN ---
+G = balanced_tree(num_leaves=3, rank=r, phys_dim=len(x0))
+G = tensor_network_grid(G, primitive_grid=[x0, x1, x2])
+obj = Objective(sphere)
+G = tree_tensor_network_optimize(G, obj, num_sweeps=epochs)
 
-print(f"true minimum = {f_true:.6f} at x_true = {x_true}")
-print(f"distance to true minimizer = {dist:.4e}")
-print(f"difference from the minimum = {gap:.4e}")
+# Extract best candidate from the root node’s grid
+build_node_grid(G)
+root_grid = G.nodes[root(G)]["grid"]
+vals_ttn = root_grid.evaluate(sphere)
+i_ttn = int(np.argmin(vals_ttn))
+x_ttn, f_ttn = root_grid.grid[i_ttn], float(vals_ttn[i_ttn])
+print("TTN  -> x* =", np.round(x_ttn, 4), "f* =", f"{f_ttn:.6f}")
 ```
 
-Following the minimal example above, users can easily adapt the objective, discretization (grid density or node type), rank schedule, and evaluation budget to their application. Additional usage examples as well as the detailed API documentation are provided in the
+Following the minimal example above, users can easily adapt the objective, discretization, rank schedule, and evaluation budget to their application. Additional usage examples as well as the detailed API documentation are provided in the
 [mtopt Documentation](https://mtopt.readthedocs.io/en/latest/).
 
 # References
