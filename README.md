@@ -1,6 +1,6 @@
 # `mtopt` — tensor rank cross and matrix train optimizers.
 
-##### `mtopt` is a lightweight Python library that implements two optimizers for black-box optimization on discrete grids: Tensor Rank Cross (TRC) and Matrix Train (MT). Both methods build low‑rank tensor representations of the objective from a small number of function evaluations, then extract candidate optima directly from the representations. The package targets use‑cases where objective gradients are unavailable or unreliable, and where each function call is expensive (simulation, hardware loop, or batched evaluation).
+##### `mtopt` is a lightweight Python library that implements two optimizers for black-box optimization on discrete grids: Tensor Rank Cross (TRC) and Matrix Train Cross (MTC). Both methods build low‑rank tensor representations of the objective from a small number of function evaluations, then extract candidate optima directly from the representations. The package targets use‑cases where objective gradients are unavailable or unreliable, and where each function call is expensive.
 
 ## Installation
 
@@ -44,7 +44,7 @@ If you happen to find `mtopt` useful in your work, please consider supporting de
 
 ## Contribution guidelines
 
-If you want to contribute to `mdopt`, be sure to follow GitHub's contribution guidelines.
+If you want to contribute to `mtopt`, be sure to follow GitHub's contribution guidelines.
 This project adheres to our [code of conduct](https://github.com/terra-quantum-io/mtopt/blob/main/CODE_OF_CONDUCT.md).
 By participating, you are expected to uphold this code.
 
