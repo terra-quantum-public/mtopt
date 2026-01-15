@@ -739,15 +739,14 @@ def tree_tensor_network_optimize(
 
     return graph
 
-
-def tensor_network_cur(
+def tree_tensor_network_cross(
     graph: nx.DiGraph,
     objective: Objective,
 ) -> nx.DiGraph:
     r"""
-    Build CUR-like cross approximation tensors on a tensor network.
+    Build CUR-like cross approximation tensors on a tree tensor network.
 
-    This routine assumes that a tensor network graph already carries
+    This routine assumes that a tree tensor network graph already carries
     edge and node grids (e.g. after :func:`tn_grid` / `tensor_network_grid`)
     and uses them to construct *consistent* tensors that approximate
     the objective function in a TTN/Tree-TN fashion:
