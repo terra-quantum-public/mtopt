@@ -1,11 +1,11 @@
-"""Top-level command line interface to run TRC/MT/TTOpt/... benchmarks and generate plots.
+"""Top-level command line interface to run TRC/MTC/TTOpt/... benchmarks and generate plots.
 
 Example:
 python benchmark.py \
 --num_dimensions 7 --num_grid_points 5 --ranks 1 2 3 4 5 \
 --num_sweeps 6 --seed 42 --num_experiments 10 \
 --functions Ackley Alpine1 Brown Exponential Griewank Qing Rastrigin Schaffer \
---methods TRC MT TTOpt DA DE
+--methods TRC MTC TTOpt DA DE
 """
 
 from __future__ import annotations
@@ -33,8 +33,8 @@ def parse_args() -> argparse.Namespace:
         "--methods",
         type=str,
         nargs="+",
-        default=["TRC", "MT", "TTOpt"],
-        help="Optimizers to run (TRC, MT, TTOpt)",
+        default=["TRC", "MTC", "TTOpt"],
+        help="Optimizers to run (TRC, MTC, TTOpt)",
     )
     p.add_argument(
         "--functions",

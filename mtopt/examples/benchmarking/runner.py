@@ -7,13 +7,13 @@ from tqdm import tqdm
 import numpy as np
 import pandas as pd
 from numpy.random import SeedSequence
-from helpers import run_trc, run_mt, run_ttopt, run_de, run_da
+from helpers import run_trc, run_mtc, run_ttopt, run_de, run_da
 
 
 # A dictionary mapping optimizers' names to their corresponding runner functions
 METHODS = {
     "TRC": run_trc,
-    "MT": run_mt,
+    "MTC": run_mtc,
     "TTOpt": run_ttopt,
     "DE": run_de,
     "DA": run_da,
@@ -23,7 +23,7 @@ METHODS = {
 # A dictionary mapping optimizers to their score transformation types
 _METHOD_TRANSFORM = {
     "TRC": "-exp",  # best_f = -exp(-f)
-    "MT": "-exp",
+    "MTC": "-exp",
     "DE": "-exp",  # ensure DE uses -exp(-f) in helpers
     "DA": "-exp",  # ensure DA uses -exp(-f) in helpers
     "TTOpt": "+exp",  # best_f =  exp(-f)

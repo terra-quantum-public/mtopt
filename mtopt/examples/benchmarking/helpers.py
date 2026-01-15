@@ -55,8 +55,8 @@ def run_trc(func, bounds, num_grid_points, rank, num_sweeps, seed=42):
     return calls, f_min, obj
 
 
-def run_mt(func, bounds, num_grid_points, rank, num_sweeps, seed=42):
-    """Run Matrix Train benchmark."""
+def run_mtc(func, bounds, num_grid_points, rank, num_sweeps, seed=42):
+    """Run Matrix Train Cross benchmark."""
     _seed_all(seed)
     primitives = make_primitives(bounds, num_grid_points=num_grid_points)
     # obj = Objective(func)
