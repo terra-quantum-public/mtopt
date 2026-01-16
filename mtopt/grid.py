@@ -26,7 +26,22 @@ The main operations provided are:
 The core numerical work relies on :mod:`numpy`. Graph operations assume a
 NetworkX-like interface but do not depend on a specific graph implementation.
 
-This code has been taken and adapted from the PyQuTree package authored by Roman Ellerbrock.
+Provenance
+----------
+This module contains code adapted from the pyQuTree package by Roman Ellerbrock
+(see Ref. [2]). The underlying library and concepts are described in the QuTree
+paper (Ref. [1]).
+
+References
+----------
+.. [1] R. Ellerbrock, K. G. Johnson, S. Seritan, H. Hoppe, J. H. Zhang,
+       T. Lenzen, T. Weike, U. Manthe, and T. J. Martínez,
+       "QuTree: A tree tensor network package",
+       *J. Chem. Phys.* **160**(11), 112501 (2024).
+       doi:10.1063/5.0180233
+
+.. [2] R. Ellerbrock, *pyQuTree* (software), Python package ``pyqutree``.
+       Source: https://github.com/roman-ellerbrock/pyQuTree
 """
 
 from __future__ import annotations

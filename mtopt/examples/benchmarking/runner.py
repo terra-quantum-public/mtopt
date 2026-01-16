@@ -1,4 +1,4 @@
-"""Runner to compare TRC/MT/TTOpt/... optimizers on various benchmark functions."""
+"""Runner to compare TRC/MTC/TTOpt/... optimizers on various benchmark functions."""
 
 from __future__ import annotations
 import re

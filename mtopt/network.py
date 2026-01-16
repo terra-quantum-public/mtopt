@@ -2,8 +2,7 @@ r"""
 Graph utilities for tensor-network structures.
 
 This module provides helper routines for working with tensor-network graphs
-represented as :class:`networkx.DiGraph` objects. It is adapted from the
-PyQuTree package by Roman Ellerbrock.
+represented as :class:`networkx.DiGraph` objects.
 
 The conventions used here are:
 
@@ -25,6 +24,23 @@ The module includes:
   - :func:`tensor_train_graph`
   - :func:`tensor_train_operator_graph`
   - :func:`balanced_tree`
+
+Provenance
+----------
+This module contains code adapted from the pyQuTree package by Roman Ellerbrock
+(see Ref. [2]). The underlying library and concepts are described in the QuTree
+paper (Ref. [1]).
+
+References
+----------
+.. [1] R. Ellerbrock, K. G. Johnson, S. Seritan, H. Hoppe, J. H. Zhang,
+       T. Lenzen, T. Weike, U. Manthe, and T. J. Martínez,
+       "QuTree: A tree tensor network package",
+       *J. Chem. Phys.* **160**(11), 112501 (2024).
+       doi:10.1063/5.0180233
+
+.. [2] R. Ellerbrock, *pyQuTree* (software), Python package ``pyqutree``.
+       Source: https://github.com/roman-ellerbrock/pyQuTree
 """
 
 from __future__ import annotations
