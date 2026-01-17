@@ -1,6 +1,6 @@
-# `mtopt` — tensor rank cross and matrix train optimizers.
+# `mtopt` — tensor rank cross and matrix train cross optimizers.
 
-##### `mtopt` is a lightweight Python library that implements two optimizers for black-box optimization on discrete grids: Tensor Rank Cross (TRC) and Matrix Train Cross (MTC). Both methods build low‑rank tensor representations of the objective from a small number of function evaluations, then extract candidate optima directly from the representations. The package targets use‑cases where objective gradients are unavailable or unreliable, and where each function call is expensive.
+##### `mtopt` is a lightweight Python library that implements two optimizers for black-box optimization on discrete grids by extending matrix cross approximation to two distinct types of tensor networks. The first, **Tensor Rank Cross (TRC)** is a cross approximation for tensor rank decomposition (also called canonical diadic decomposition (Candecomp)). The second, **Matrix Train Cross (MTC)** approximation is a cross approximation that combines features of TRC and Tensor Train (also called Matrix Product State (MPS)) decomposition. Both methods build low‑rank tensor representations of a function from a small number of function evaluations, then extract candidate optima directly from the representations. The package is designed specifically for high-dimensional functions with multiple local minima, where each function evaluation is computationally expensive.
 
 ## Installation
 
@@ -20,16 +20,56 @@ poetry install
 
 ```python
 import numpy as np
-# TBD
+from mtopt.grid import Grid, tensor_network_grid, build_node_grid
+from mtopt.network import balanced_tree, root
+from mtopt.optimization import (
+    TensorRankOptimization,
+    MatrixTrainOptimization,
+    Objective,
+    random_grid_points,
+    tree_tensor_network_optimize,
+)
+
+# Black-box objective (accept **kwargs to ignore optimizer metadata like `epoch`)
+def sphere(x, **_):
+    x = np.asarray(x, dtype=float)
+    return float(np.sum(x**2))
+
+# 1) Primitive 1D grids
+x0 = np.linspace(-2.0, 2.0, 51)
+x1 = np.linspace(-2.0, 2.0, 51)
+x2 = np.linspace(-2.0, 2.0, 51)
+g0, g1, g2 = Grid(x0, coords=0), Grid(x1, coords=1), Grid(x2, coords=2)
+primitives = [g0, g1, g2]
+
+r = 6
+epochs = 8
+
+# --- TRC ---
+trc = TensorRankOptimization(primitives, r=r)
+skel_trc = random_grid_points(primitives, r=r, seed=42)
+skel_trc = trc.optimize(skel_trc, function=sphere, num_epochs=epochs)
+vals_trc = skel_trc.evaluate(sphere)
+i_trc = int(np.argmin(vals_trc))
+x_trc, f_trc = skel_trc.grid[i_trc], float(vals_trc[i_trc])
+print("TRC  -> x* =", np.round(x_trc, 4), "f* =", f"{f_trc:.6f}")
+
+# --- MTC ---
+mtc = MatrixTrainOptimization(primitives, r=r)
+skel_mtc = random_grid_points(primitives, r=r, seed=42)
+skel_mtc = mtc.optimize(skel_mtc, function=sphere, num_epochs=epochs)
+vals_mtc = skel_mtc.evaluate(sphere)
+i_mtc = int(np.argmin(vals_mtc))
+x_mtc, f_mtc = skel_mtc.grid[i_mtc], float(vals_mtc[i_mtc])
+print("MTC  -> x* =", np.round(x_mtc, 4), "f* =", f"{f_mtc:.6f}")
 ```
 
 ## Examples
 
-The examples module contains full workflows that demonstrate typical use cases, such as TBD. Each example is fully documented and serves as a starting point for building your own experiments.
-The package has been tested on macOS and Linux and does not currently support Windows.
+The examples module contains full workflows that demonstrate typical use cases. Each example is fully documented and serves as a starting point for building your own experiments. The package has been tested on macOS and Linux and does not currently support Windows.
 
 ## Cite
-If you happen to find `mtopt` useful in your work, please consider supporting development by citing it. (Here goes the BibTeX entry for our future JOSS paper.)
+If you happen to find `mtopt` useful in your work, please consider supporting development by citing it. (Here goes the BibTeX entry for our future JOSS paper as well for the algorithm paper.)
 ```
 @article{x,
   title={x},
@@ -81,14 +121,6 @@ Developers may find the following guidelines useful:
 
   ```bash
   black .
-  ```
-
-- **Pre-commit hooks.**
-  [Pre-commit](https://pre-commit.com/) hooks are configured to enforce consistent style automatically.
-  To enable them:
-
-  ```bash
-  pre-commit install
   ```
 
 ## License
