@@ -1,23 +1,21 @@
+import networkx as nx
 import numpy as np
 import pandas as pd
-import networkx as nx
-
 import pytest
 
+from mtopt.grid import Grid, tensor_network_grid
+from mtopt.network import (
+    is_leaf,
+    tensor_train_graph,
+)
 from mtopt.optimization import (
-    tree_tensor_network_optimize,
-    tree_tensor_network_cross,
+    Objective,
+    OptimizationLogger,
     numpy_array_to_tuple,
     random_grid_points,
-    OptimizationLogger,
-    Objective,
+    tree_tensor_network_cross,
+    tree_tensor_network_optimize,
 )
-from mtopt.grid import Grid
-from mtopt.network import (
-    tensor_train_graph,
-    is_leaf,
-)
-from mtopt.grid import tensor_network_grid
 
 
 def test_optimization_logger_records_and_best_row():
@@ -205,7 +203,10 @@ def test_tn_cur_builds_cur_like_tensors():
 
 def _make_primitive_grids(sizes: list[int]) -> list[Grid]:
     """Helper to create primitive grids with given sizes."""
-    return [Grid(np.arange(s).reshape(-1, 1).astype(float), [i]) for i, s in enumerate(sizes)]
+    return [
+        Grid(np.arange(s).reshape(-1, 1).astype(float), [i])
+        for i, s in enumerate(sizes)
+    ]
 
 
 def test_random_grid_points_basic_2x3():
@@ -246,7 +247,7 @@ def test_random_grid_points_asymmetric_grids():
     assert result.num_coords() == 3
     unique_rows = np.unique(result.grid, axis=0)
     assert len(unique_rows) == n_samples
-    # Check that values are within expected ranges
+
     assert np.all(result.grid[:, 0] >= 0) and np.all(result.grid[:, 0] < 2)
     assert np.all(result.grid[:, 1] >= 0) and np.all(result.grid[:, 1] < 5)
     assert np.all(result.grid[:, 2] >= 0) and np.all(result.grid[:, 2] < 4)
@@ -255,7 +256,7 @@ def test_random_grid_points_asymmetric_grids():
 def test_random_grid_points_full_cartesian_product():
     """When n_samples equals total combinations, should return full cartesian product."""
     grids = _make_primitive_grids([2, 3])
-    total = 2 * 3  # 6
+    total = 6
 
     result = random_grid_points(grids, total, seed=42)
 
