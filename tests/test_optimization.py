@@ -2,13 +2,17 @@ import numpy as np
 import pandas as pd
 import networkx as nx
 
+import pytest
+
 from mtopt.optimization import (
     tree_tensor_network_optimize,
+    tree_tensor_network_cross,
     numpy_array_to_tuple,
-    tensor_network_cur,
+    random_grid_points,
     OptimizationLogger,
     Objective,
 )
+from mtopt.grid import Grid
 from mtopt.network import (
     tensor_train_graph,
     is_leaf,
@@ -173,7 +177,7 @@ def test_tn_cur_builds_cur_like_tensors():
 
     objective = Objective(error_fn)
 
-    graph_cur = tensor_network_cur(graph, objective)
+    graph_cur = tree_tensor_network_cross(graph, objective)
 
     # There should be at least one (physical) node with an "A" tensor
     physical_nodes = [n for n in graph_cur.nodes if n >= 0]
@@ -192,3 +196,130 @@ def test_tn_cur_builds_cur_like_tensors():
     # CUR construction should have triggered multiple objective evaluations
     assert objective.function_calls > 0
     assert len(objective.cache) > 0
+
+
+# ----------------------------------------------------------------------
+# random_grid_points tests
+# ----------------------------------------------------------------------
+
+
+def _make_primitive_grids(sizes: list[int]) -> list[Grid]:
+    """Helper to create primitive grids with given sizes."""
+    return [Grid(np.arange(s).reshape(-1, 1).astype(float), [i]) for i, s in enumerate(sizes)]
+
+
+def test_random_grid_points_basic_2x3():
+    """Test sampling from a 2x3 grid (6 total combinations)."""
+    grids = _make_primitive_grids([2, 3])
+    n_samples = 4
+
+    result = random_grid_points(grids, n_samples, seed=42)
+
+    assert result.num_points() == n_samples
+    assert result.num_coords() == 2
+    # All points should be unique
+    unique_rows = np.unique(result.grid, axis=0)
+    assert len(unique_rows) == n_samples
+
+
+def test_random_grid_points_3x3x3():
+    """Test sampling from a 3x3x3 grid (27 total combinations)."""
+    grids = _make_primitive_grids([3, 3, 3])
+    n_samples = 10
+
+    result = random_grid_points(grids, n_samples, seed=123)
+
+    assert result.num_points() == n_samples
+    assert result.num_coords() == 3
+    unique_rows = np.unique(result.grid, axis=0)
+    assert len(unique_rows) == n_samples
+
+
+def test_random_grid_points_asymmetric_grids():
+    """Test sampling from asymmetric grids (2x5x4 = 40 combinations)."""
+    grids = _make_primitive_grids([2, 5, 4])
+    n_samples = 15
+
+    result = random_grid_points(grids, n_samples, seed=99)
+
+    assert result.num_points() == n_samples
+    assert result.num_coords() == 3
+    unique_rows = np.unique(result.grid, axis=0)
+    assert len(unique_rows) == n_samples
+    # Check that values are within expected ranges
+    assert np.all(result.grid[:, 0] >= 0) and np.all(result.grid[:, 0] < 2)
+    assert np.all(result.grid[:, 1] >= 0) and np.all(result.grid[:, 1] < 5)
+    assert np.all(result.grid[:, 2] >= 0) and np.all(result.grid[:, 2] < 4)
+
+
+def test_random_grid_points_full_cartesian_product():
+    """When n_samples equals total combinations, should return full cartesian product."""
+    grids = _make_primitive_grids([2, 3])
+    total = 2 * 3  # 6
+
+    result = random_grid_points(grids, total, seed=42)
+
+    assert result.num_points() == total
+    assert result.num_coords() == 2
+    # Should contain all combinations
+    unique_rows = np.unique(result.grid, axis=0)
+    assert len(unique_rows) == total
+
+
+def test_random_grid_points_single_sample():
+    """Test sampling just one point."""
+    grids = _make_primitive_grids([5, 5])
+    n_samples = 1
+
+    result = random_grid_points(grids, n_samples, seed=42)
+
+    assert result.num_points() == 1
+    assert result.num_coords() == 2
+
+
+def test_random_grid_points_reproducibility():
+    """Same seed should produce same results."""
+    grids = _make_primitive_grids([4, 4, 4])
+    n_samples = 10
+
+    result1 = random_grid_points(grids, n_samples, seed=12345)
+    result2 = random_grid_points(grids, n_samples, seed=12345)
+
+    np.testing.assert_array_equal(result1.grid, result2.grid)
+
+
+def test_random_grid_points_different_seeds():
+    """Different seeds should produce different results."""
+    grids = _make_primitive_grids([10, 10])
+    n_samples = 20
+
+    result1 = random_grid_points(grids, n_samples, seed=1)
+    result2 = random_grid_points(grids, n_samples, seed=2)
+
+    # With high probability, results should differ
+    assert not np.array_equal(result1.grid, result2.grid)
+
+
+def test_random_grid_points_error_too_many_samples():
+    """Should raise ValueError when requesting more samples than available."""
+    grids = _make_primitive_grids([2, 2])
+    total = 4
+
+    with pytest.raises(ValueError, match="Cannot sample"):
+        random_grid_points(grids, total + 1, seed=42)
+
+
+def test_random_grid_points_error_zero_samples():
+    """Should raise ValueError when requesting zero samples."""
+    grids = _make_primitive_grids([3, 3])
+
+    with pytest.raises(ValueError, match="must be positive"):
+        random_grid_points(grids, 0, seed=42)
+
+
+def test_random_grid_points_error_negative_samples():
+    """Should raise ValueError when requesting negative samples."""
+    grids = _make_primitive_grids([3, 3])
+
+    with pytest.raises(ValueError, match="must be positive"):
+        random_grid_points(grids, -5, seed=42)

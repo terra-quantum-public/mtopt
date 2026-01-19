@@ -31,30 +31,29 @@ References
 from __future__ import annotations
 
 import random
-import itertools
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple
 
+import networkx as nx
 import numpy as np
 import pandas as pd
-import networkx as nx
 from scipy.optimize import linear_sum_assignment
 
-from mtopt.maxvol import maxvol
-from mtopt.tensor import Tensor
 from mtopt.grid import (
-    tensor_network_grid,
-    regularized_inverse,
+    Grid,
     cartesian_product,
     maxvol_grids,
-    Grid,
+    regularized_inverse,
+    tensor_network_grid,
 )
+from mtopt.maxvol import maxvol
 from mtopt.network import (
-    star_sweep,
-    pre_edges,
     collect,
-    sweep,
     flip,
+    pre_edges,
+    star_sweep,
+    sweep,
 )
+from mtopt.tensor import Tensor
 
 
 class Model:
@@ -129,30 +128,46 @@ def random_points(primitive_grid: list[Grid], r: int, seed: int = 42) -> np.ndar
     return np.array(x).T
 
 
-def random_grid_points(primitive_grids: list[Grid], r: int, seed: int = 42) -> Grid:
+def random_grid_points(
+    primitive_grids: list[Grid], n_samples: int, seed: int = 42
+) -> Grid:
     """
-    Sample r unique points from the full Cartesian product of f primitives.
+    Sample n_samples unique points from the Cartesian product of the primitive grids
 
     Returns:
-      Grid of shape (r x f) with coords [0..f-1].
+      Grid of shape (n_samples x n_primitives) with coords [0..n_primitives-1].
     """
-    random.seed(seed)
 
-    def unique_integer_arrays(r, N, f):
-        if r > N**f:
-            raise ValueError("Not enough unique combos.")
-        return np.array(random.sample(list(itertools.product(range(N), repeat=f)), r))
+    def sample_unique_indices(
+        grid_sizes: list[int], n_samples: int, seed: int
+    ) -> set[tuple[int, ...]]:
+        rng = np.random.default_rng(seed)
+        sampled_indices = set()
+        while len(sampled_indices) < n_samples:
+            indices = tuple(rng.integers(grid_sizes))
+            sampled_indices.add(indices)
+        return sampled_indices
 
-    def indices_to_grid_points(idxs, grids):
+    def indices_to_grid_points(indices, grids):
         return np.array(
-            [[grids[d].grid[i, 0] for d, i in enumerate(pt)] for pt in idxs]
+            [[grids[d].grid[i, 0] for d, i in enumerate(pt)] for pt in indices]
         )
 
-    f = len(primitive_grids)
-    N = primitive_grids[0].grid.shape[0]
-    idcs = unique_integer_arrays(r, N, f)
-    coords = indices_to_grid_points(idcs, primitive_grids)
-    return Grid(coords, list(range(f)))
+    grid_sizes = [grid.grid.shape[0] for grid in primitive_grids]
+    total_combinations = np.prod(grid_sizes)
+
+    if n_samples <= 0:
+        raise ValueError("n_samples must be positive")
+    if n_samples > total_combinations:
+        raise ValueError(
+            f"Cannot sample {n_samples} unique points from {total_combinations} total combinations"
+        )
+    if n_samples == total_combinations:
+        return cartesian_product(primitive_grids)
+
+    sampled_index_tuples = sample_unique_indices(grid_sizes, n_samples, seed)
+    coords = indices_to_grid_points(sampled_index_tuples, primitive_grids)
+    return Grid(coords, list(range(len(grid_sizes))))
 
 
 def maxvol_selection(grid: Grid, function: Callable, dim2: int, **kwargs):
@@ -752,6 +767,7 @@ def tree_tensor_network_optimize(
         graph = tree_tensor_network_optimizer_step(graph, objective, sweep_index)
 
     return graph
+
 
 def tree_tensor_network_cross(
     graph: nx.DiGraph,
