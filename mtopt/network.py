@@ -39,7 +39,7 @@ References
        *J. Chem. Phys.* **160**(11), 112501 (2024).
        doi:10.1063/5.0180233
 
-.. [2] R. Ellerbrock, *pyQuTree* (software), Python package ``pyqutree``.
+.. [2] R. Ellerbrock, *pyQuTree* (software), Python package ``pyQuTree``.
        Source: https://github.com/roman-ellerbrock/pyQuTree
 """
 
