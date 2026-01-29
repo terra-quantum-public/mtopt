@@ -42,12 +42,12 @@ x2 = np.linspace(-2.0, 2.0, 51)
 g0, g1, g2 = Grid(x0, coords=0), Grid(x1, coords=1), Grid(x2, coords=2)
 primitives = [g0, g1, g2]
 
-r = 6
+rank = 6
 epochs = 8
 
 # --- TRC ---
-trc = TensorRankOptimization(primitives, r=r)
-skel_trc = random_grid_points(primitives, r=r, seed=42)
+trc = TensorRankOptimization(primitives)
+skel_trc = random_grid_points(primitives, n_samples=10, seed=42)
 skel_trc = trc.optimize(skel_trc, function=sphere, num_epochs=epochs)
 vals_trc = skel_trc.evaluate(sphere)
 i_trc = int(np.argmin(vals_trc))
@@ -55,13 +55,27 @@ x_trc, f_trc = skel_trc.grid[i_trc], float(vals_trc[i_trc])
 print("TRC  -> x* =", np.round(x_trc, 4), "f* =", f"{f_trc:.6f}")
 
 # --- MTC ---
-mtc = MatrixTrainOptimization(primitives, r=r)
-skel_mtc = random_grid_points(primitives, r=r, seed=42)
+mtc = MatrixTrainOptimization(primitives)
+skel_mtc = random_grid_points(primitives, n_samples=10, seed=42)
 skel_mtc = mtc.optimize(skel_mtc, function=sphere, num_epochs=epochs)
 vals_mtc = skel_mtc.evaluate(sphere)
 i_mtc = int(np.argmin(vals_mtc))
 x_mtc, f_mtc = skel_mtc.grid[i_mtc], float(vals_mtc[i_mtc])
 print("MTC  -> x* =", np.round(x_mtc, 4), "f* =", f"{f_mtc:.6f}")
+
+# --- TTN ---
+G = balanced_tree(num_leaves=3, rank=rank, phys_dim=len(x0))
+G = tensor_network_grid(G, primitive_grid=[x0, x1, x2])
+obj = Objective(sphere)
+G = tree_tensor_network_optimize(G, obj, num_sweeps=epochs)
+
+# Extract best candidate from the root node’s grid
+build_node_grid(G)
+root_grid = G.nodes[root(G)]["grid"]
+vals_ttn = root_grid.evaluate(sphere)
+i_ttn = int(np.argmin(vals_ttn))
+x_ttn, f_ttn = root_grid.grid[i_ttn], float(vals_ttn[i_ttn])
+print("TTN  -> x* =", np.round(x_ttn, 4), "f* =", f"{f_ttn:.6f}")
 ```
 
 ## Examples
