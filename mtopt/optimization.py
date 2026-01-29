@@ -387,24 +387,23 @@ class TensorRankOptimization(Model):
 
     Args:
       primitive_grids: list of f Grids, one per each dimension.
-      r: Number of cross-pivots (rank).
 
-    After a sweep, returns:
-        grid: Updated Grid of shape (r x f).
-        vmat: Evaluation matrix of shape (r x f).
+    Notes
+    -----
+    The effective "rank" is defined by the current skeleton grid:
+        r := grid.num_points()
+    and is preserved by the update rules.
     """
 
-    def __init__(self, primitive_grids: list[Grid], r: int):
-        self.data(primitive_grids, r)
+    def __init__(self, primitive_grids: list[Grid]):
+        self.data(primitive_grids)
 
-    def data(self, primitive_grids: list[Grid], r: int):
+    def data(self, primitive_grids: list[Grid]):
         """
         Args:
           primitive_grids: list of f one-dimensional Grids (Ni x 1)
-          r: skeleton rank
         """
         self.primitive_grids = primitive_grids
-        self.r = r
 
     def sweep(self, grid: Grid, function: Callable, epoch: int):
         """
@@ -428,31 +427,24 @@ class MatrixTrainOptimization(Model):
 
     Args:
         primitive_grids: list of N one-dimensional Grids (Ni x 1).
-        r: Number of cross-pivots.
 
-    After a sweep, returns:
-      cores: list of N-2 Grid objects, each shape (r x 3).
-      vmat : Evaluation matrix.
+    Notes
+    -----
+    The effective "rank" is defined by the current skeleton grid:
+        r := grid.num_points()
+    and is preserved by the update rules.
     """
 
-    def __init__(self, primitive_grids: list[Grid], r: int):
+    def __init__(self, primitive_grids: list[Grid]):
+        self.data(primitive_grids)
+
+    def data(self, primitive_grids: list[Grid]):
         """
         Args:
           primitive_grids: list of N one-dimensional Grids (Ni x 1)
-          r: skeleton junction rank
         """
         self.primitive_grids = primitive_grids
         self.N = len(primitive_grids)
-        self.r = r
-
-    def data(self, primitive_grids: list[Grid], r: int):
-        """
-        Args:
-          primitive_grids: list of f one-dimensional Grids (Ni x 1)
-          r: skeleton rank
-        """
-        self.primitive_grids = primitive_grids
-        self.r = r
 
     def sweep(self, grid: Grid, function: Callable, epoch: int):
         vmat = None
@@ -596,56 +588,20 @@ class Objective:
         self.cache_hits: int = 0
         self.function_calls: int = 0
 
-    def __call__(self, x: np.ndarray, **kwargs: Any) -> float:
+    def __call__(self, x: np.ndarray, **kwargs: Any) -> Any:
         r"""
-        Evaluate the objective at a point, with caching and logging.
+        Evaluate the objective at a point OR a batch of points, with caching/logging.
 
-        Parameters
-        ----------
-        x :
-            Point at which to evaluate the objective. Will be converted
-            to a 1D :class:`numpy.ndarray`.
-        **kwargs :
-            Additional metadata to log (for example ``sweep=..``,
-            ``node=..``). If provided, the point and metadata are stored
-            via :class:`OptimizationLogger`.
-
-        Returns
-        -------
-        float
-            Transformed objective value
-            ``transformer(error_fn(x))``.
-
-        Notes
-        -----
-        The cache key is built from the rounded coordinates of ``x`` via
-        :func:`numpy_array_to_tuple`. Cached values are stored in terms
-        of **raw** objective values (i.e. before applying
-        ``transformer``).
+        If ``x`` is 2D of shape (n_points, dim), returns a 1D array of length n_points.
+        If ``x`` is 1D, returns a scalar.
         """
-        x_array = np.asarray(x, dtype=float).ravel()
-        key = numpy_array_to_tuple(x_array)
+        x_arr = np.asarray(x, dtype=float)
 
-        # Cache lookup
-        if key in self.cache:
-            self.cache_hits += 1
-            raw_value = self.cache[key]
-            return self.transformer(raw_value)
+        # Batched path
+        if x_arr.ndim == 2:
+            return self.evaluate_batch(x_arr, **kwargs)
 
-        # Actual evaluation
-        raw_value = self.error_fn(x_array)
-        transformed_value = self.transformer(raw_value)
-
-        # Store in cache
-        self.cache[key] = raw_value
-        self.function_calls += 1
-
-        # Logging
-        if kwargs:
-            coord_dict = {f"x{i + 1}": key[i] for i in range(len(key))}
-            self.logger({**coord_dict, "f": raw_value, **kwargs})
-
-        return transformed_value
+        return self.evaluate_point(x_arr, **kwargs)
 
     def __str__(self) -> str:  # pragma: no cover - mostly formatting
         num_function = self.function_calls
@@ -658,6 +614,95 @@ class Objective:
             f"Number of cached function accesses: {num_cache}\n"
             f"Total number of calls: {total_calls}"
         )
+
+    def evaluate_point(self, point: np.ndarray, **kwargs: Any) -> float:
+        """Evaluate the objective on a single point, with caching/logging."""
+        point = point.ravel()
+        key = numpy_array_to_tuple(point)
+
+        if key in self.cache:
+            self.cache_hits += 1
+            raw_value = self.cache[key]
+            return self.transformer(raw_value)
+
+        raw_value = self.error_fn(point)
+        transformed_value = self.transformer(raw_value)
+
+        self.cache[key] = raw_value
+        self.function_calls += 1
+
+        if kwargs:
+            coord_dict = {f"x{i + 1}": key[i] for i in range(len(key))}
+            self.logger({**coord_dict, "f": raw_value, **kwargs})
+
+        return transformed_value
+
+    def evaluate_batch(self, points: np.ndarray, **kwargs: Any) -> np.ndarray:
+        r"""
+        Evaluate the objective on a batch of points (n_points, dim), with caching/logging.
+
+        Deduplicates repeated (rounded) points inside the batch, tries a single vectorized
+        call to ``error_fn`` for the remaining unique uncached points, then falls back
+        to pointwise evaluation if needed.
+        """
+        X = np.asarray(points, dtype=float)
+        if X.ndim != 2:
+            raise ValueError("Batch evaluation expects a 2D array of points.")
+
+        n_points = X.shape[0]
+        keys = [numpy_array_to_tuple(X[i]) for i in range(n_points)]
+        values = np.empty(n_points, dtype=float)
+
+        # Group indices by key to avoid duplicate evaluations in the same batch
+        uncached_groups: Dict[Tuple[float, ...], list[int]] = {}
+
+        # Fill cached values + collect uncached
+        for i, key in enumerate(keys):
+            if key in self.cache:
+                self.cache_hits += 1
+                values[i] = self.transformer(self.cache[key])
+            else:
+                uncached_groups.setdefault(key, []).append(i)
+
+        if uncached_groups:
+            unique_keys = list(uncached_groups.keys())
+            unique_rep_indices = [uncached_groups[k][0] for k in unique_keys]
+            X_unique = X[unique_rep_indices]
+
+            # Try vectorized error_fn on the unique uncached points
+            raw_unique = None
+            try:
+                raw_unique = np.asarray(self.error_fn(X_unique), dtype=float).reshape(
+                    -1
+                )
+                if raw_unique.shape[0] != len(unique_keys):
+                    raw_unique = None
+            except Exception:
+                raw_unique = None
+
+            # Fallback: pointwise error_fn
+            if raw_unique is None:
+                raw_unique = np.array(
+                    [self.error_fn(X[i].ravel()) for i in unique_rep_indices],
+                    dtype=float,
+                )
+
+            # Cache + broadcast duplicates
+            for j, key in enumerate(unique_keys):
+                raw_value = float(raw_unique[j])
+                transformed_value = self.transformer(raw_value)
+
+                self.cache[key] = raw_value
+                self.function_calls += 1
+
+                for i in uncached_groups[key]:
+                    values[i] = transformed_value
+
+                if kwargs:
+                    coord_dict = {f"x{i + 1}": key[i] for i in range(len(key))}
+                    self.logger({**coord_dict, "f": raw_value, **kwargs})
+
+        return values
 
 
 def tree_tensor_network_optimizer_step(

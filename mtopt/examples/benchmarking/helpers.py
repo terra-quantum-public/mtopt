@@ -47,7 +47,7 @@ def run_trc(func, bounds, num_grid_points, rank, num_sweeps, seed=42):
     primitives = make_primitives(bounds, num_grid_points)
     # obj = Objective(func)
     obj = Objective(func, lambda x: -np.exp(-x))
-    model = TensorRankOptimization(primitives, rank)
+    model = TensorRankOptimization(primitives)
     grid_start = random_grid_points(primitives, rank, seed)
     _ = model.optimize(grid_start, obj, num_sweeps)
     calls = obj.function_calls
@@ -61,7 +61,7 @@ def run_mtc(func, bounds, num_grid_points, rank, num_sweeps, seed=42):
     primitives = make_primitives(bounds, num_grid_points=num_grid_points)
     # obj = Objective(func)
     obj = Objective(func, lambda x: -np.exp(-x))
-    model = MatrixTrainOptimization(primitives, rank)
+    model = MatrixTrainOptimization(primitives)
     grid_start = random_grid_points(primitives, rank, seed)
     _ = model.optimize(grid_start, obj, num_sweeps)
     calls = obj.function_calls

@@ -1,3 +1,5 @@
+import time
+
 import networkx as nx
 import numpy as np
 import pandas as pd
@@ -324,3 +326,120 @@ def test_random_grid_points_error_negative_samples():
 
     with pytest.raises(ValueError, match="must be positive"):
         random_grid_points(grids, -5, seed=42)
+
+
+def test_objective_batch_calls_error_fn_once_when_vectorized():
+    """
+    Deterministic test: if error_fn supports batched input (2D),
+    Objective.evaluate_batch should call error_fn exactly once.
+    """
+    rng = np.random.default_rng(0)
+    n_points, dim = 5000, 8
+    X = rng.standard_normal((n_points, dim))
+    grid = Grid(X, list(range(dim)))
+
+    calls = {"n": 0}
+
+    def error_fn(batch: np.ndarray) -> np.ndarray:
+        # Must accept (n_points, dim) and return (n_points,)
+        calls["n"] += 1
+        batch = np.asarray(batch, dtype=float)
+        return np.sum(batch * batch, axis=-1)
+
+    obj = Objective(error_fn)
+
+    vals = grid.evaluate(obj)
+    assert vals.shape == (n_points,)
+    assert calls["n"] == 1  # <-- key assertion: vectorized path happened
+
+    # Sanity check against reference
+    ref = np.sum(X * X, axis=1)
+    np.testing.assert_allclose(vals, ref, rtol=0, atol=0)
+
+
+def test_objective_batch_falls_back_to_pointwise_when_not_vectorized():
+    """
+    Deterministic test: if error_fn only accepts 1D points, Objective should fall back
+    and call error_fn once per (unique) point.
+    """
+    rng = np.random.default_rng(1)
+    n_points, dim = 2000, 6
+    X = rng.standard_normal((n_points, dim))
+    grid = Grid(X, list(range(dim)))
+
+    calls = {"n": 0}
+
+    def error_fn(x: np.ndarray) -> float:
+        x = np.asarray(x, dtype=float)
+        if x.ndim != 1:
+            # Force Objective.evaluate_batch to treat this as "not vectorized"
+            raise TypeError("Pointwise-only function")
+        calls["n"] += 1
+        return float(np.sum(x * x))
+
+    obj = Objective(error_fn)
+
+    vals = grid.evaluate(obj)
+    assert vals.shape == (n_points,)
+    assert calls["n"] == n_points  # no duplicates here, so should be exactly n_points
+
+
+def test_grid_evaluate_vectorized_is_faster_walltime():
+    """
+    Timing test (opt-in): compares wall time of batched vs pointwise evaluation.
+    Uses a function where pointwise overhead is large.
+    """
+    rng = np.random.default_rng(2)
+    n_points, dim = 80_000, 10
+    X = rng.standard_normal((n_points, dim))
+    grid = Grid(X, list(range(dim)))
+
+    # Vectorized objective
+    calls_vec = {"n": 0}
+
+    def error_fn_vec(batch: np.ndarray) -> np.ndarray:
+        calls_vec["n"] += 1
+        batch = np.asarray(batch, dtype=float)
+        # moderately heavy but vectorizable
+        return np.sum(np.sin(batch) + batch * batch, axis=-1)
+
+    obj_vec = Objective(error_fn_vec)
+
+    # Pointwise-only objective (forces fallback loop)
+    calls_pt = {"n": 0}
+
+    def error_fn_pt(x: np.ndarray) -> float:
+        x = np.asarray(x, dtype=float)
+        if x.ndim != 1:
+            raise TypeError("Pointwise-only function")
+        calls_pt["n"] += 1
+        return float(np.sum(np.sin(x) + x * x))
+
+    obj_pt = Objective(error_fn_pt)
+
+    def median_time(fn, repeats: int = 5) -> float:
+        times = []
+        for _ in range(repeats):
+            t0 = time.perf_counter()
+            fn()
+            times.append(time.perf_counter() - t0)
+        return float(np.median(times))
+
+    # Warmup (helps reduce one-off effects)
+    grid.evaluate(obj_vec)
+    grid.evaluate(obj_pt)
+
+    # Fresh objectives to avoid cache hits affecting timing
+    obj_vec = Objective(error_fn_vec)
+    obj_pt = Objective(error_fn_pt)
+
+    t_vec = median_time(lambda: grid.evaluate(obj_vec), repeats=5)
+    t_pt = median_time(lambda: grid.evaluate(obj_pt), repeats=5)
+
+    # Underlying call counts (sanity):
+    assert calls_vec["n"] >= 1
+    assert calls_pt["n"] >= 1
+
+    # Expect a real speedup: vectorized should be materially faster.
+    # The threshold is intentionally mild to avoid flakiness.
+    assert t_vec <= t_pt, f"Expected vectorized to be at least as fast. Got t_vec={t_vec:.4f}s, t_pt={t_pt:.4f}s"

@@ -362,27 +362,29 @@ class Grid:
 
         return Grid(grid, coords)
 
-    def evaluate(self, func, **kwargs) -> np.ndarray:
+    def evaluate(self, func, try_vectorized: bool = True, **kwargs) -> np.ndarray:
         r"""
-        Evaluate a function on each grid point.
+        Evaluate function ``func`` on the grid points.
 
-        Parameters
-        ----------
-        func :
-            Callable with signature ``f(point, *args, **kwargs)`` taking a
-            1D array (a row of :attr:`grid`) and returning a scalar or
-            array-like value.
-        **kwargs :
-            Additional keyword arguments forwarded to ``func`` via
-            :func:`numpy.apply_along_axis`.
-
-        Returns
-        -------
-        ndarray
-            Array of function values, with shape determined by
-            :func:`numpy.apply_along_axis`.
+        Tries a vectorized call first: ``func(points, **kwargs)`` with
+        ``points.shape == (n_points, n_coords)``. If that fails (or returns an
+        incompatible shape), falls back to pointwise evaluation.
         """
-        return np.apply_along_axis(func, 1, self.grid, **kwargs)
+        points = self.grid
+        n_points = points.shape[0]
+
+        if try_vectorized:
+            try:
+                out = func(points, **kwargs)
+                out_arr = np.asarray(out)
+                # Accept if the leading axis matches the number of points.
+                if out_arr.shape != () and out_arr.shape[0] == n_points:
+                    return out_arr
+            except Exception as e:
+                print(f"Vectorized evaluation failed: {e}")
+
+        # Fallback: evaluate pointwise.
+        return np.apply_along_axis(func, 1, points, **kwargs)
 
     def transform(self, func) -> "Grid":
         r"""
