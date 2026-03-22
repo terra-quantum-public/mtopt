@@ -1,5 +1,10 @@
 # `mtopt` — tensor rank cross and matrix train cross optimizers.
 
+[![lint](https://github.com/terra-quantum-io/mtopt/actions/workflows/lint.yml/badge.svg)](https://github.com/terra-quantum-io/mtopt/actions/workflows/lint.yml)
+[![tests](https://github.com/terra-quantum-io/mtopt/actions/workflows/tests.yml/badge.svg)](https://github.com/terra-quantum-io/mtopt/actions/workflows/tests.yml)
+[![dependency review](https://github.com/terra-quantum-io/mtopt/actions/workflows/dependency-review.yml/badge.svg)](https://github.com/terra-quantum-io/mtopt/actions/workflows/dependency-review.yml)
+[![CI](https://github.com/terra-quantum-io/mtopt/actions/workflows/ci.yml/badge.svg)](https://github.com/terra-quantum-io/mtopt/actions/workflows/ci.yml)
+
 ##### `mtopt` is a lightweight Python library that implements two optimizers for black-box optimization on discrete grids by extending matrix cross approximation to two distinct types of tensor networks. The first, **Tensor Rank Cross (TRC)** is a cross approximation for tensor rank decomposition (also called canonical diadic decomposition (Candecomp)). The second, **Matrix Train Cross (MTC)** approximation is a cross approximation that combines features of TRC and Tensor Train (also called Matrix Product State (MPS)) decomposition. Both methods build low‑rank tensor representations of a function from a small number of function evaluations, then extract candidate optima directly from the representations. The package is designed specifically for high-dimensional functions with multiple local minima, where each function evaluation is computationally expensive.
 
 ## Installation
