@@ -9,6 +9,7 @@ python benchmark.py \
 """
 
 from __future__ import annotations
+import os
 import argparse
 
 from functions import FUNCTION_REGISTRY, F_OPT, get_tests, resolve_f_opt_map
@@ -22,6 +23,35 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--num_dimensions", type=int, default=3, help="Problem dimension")
     p.add_argument(
         "--num_grid_points", type=int, default=10, help="Grid points per dimension"
+    )
+    p.add_argument(
+        "--grid_type",
+        type=str,
+        choices=["plain", "qtt"],
+        default="plain",
+        help=(
+            "Grid parameterization for mtopt methods. "
+            "'plain' = standard grids with num_grid_points per dimension; "
+            "'qtt' = quantized tensor-train grid (digits) with base and levels."
+        ),
+    )
+    p.add_argument(
+        "--qtt_levels",
+        type=int,
+        default=16,
+        help="QTT levels L per physical variable (N = base**L points)",
+    )
+    p.add_argument(
+        "--qtt_base",
+        type=int,
+        default=2,
+        help="QTT base b per digit (typically 2)",
+    )
+    p.add_argument(
+        "--qtt_z",
+        type=int,
+        default=3,
+        help="Group size for z-permuted QTT (used by TRC-z); z=1 recovers var-major order",
     )
     p.add_argument("--ranks", nargs="+", type=int, default=list(range(1, 5)))
     p.add_argument("--num_sweeps", type=int, default=6, help="Number of sweeps")
@@ -41,6 +71,19 @@ def parse_args() -> argparse.Namespace:
         nargs="+",
         help=f"Functions to run (choices: {list(FUNCTION_REGISTRY.keys())})",
     )
+    p.add_argument(
+        "--thresholds",
+        nargs="+",
+        type=float,
+        default=[1e-1, 1e-2, 1e-3, 1e-4, 1e-5],
+        help="Error thresholds for true calls-to-threshold logging (e.g. 1e-2 1e-3 1e-4 1e-5).",
+    )
+    p.add_argument(
+        "--out_dir",
+        type=str,
+        default="benchmark_results",
+        help="Directory to save results and plots",
+    )
     return p.parse_args()
 
 
@@ -48,6 +91,10 @@ def main() -> None:
     """Main entry point."""
     args = parse_args()
     tests = get_tests(args.num_dimensions, args.functions)
+
+    # dimension-aware f_opt map (fills Michalewicz for D=5 or D=10)
+    f_opt_map = resolve_f_opt_map(F_OPT, args.num_dimensions)
+
     df_results = compare_all(
         num_dimensions=args.num_dimensions,
         num_grid_points=args.num_grid_points,
@@ -57,17 +104,30 @@ def main() -> None:
         seed=args.seed,
         tests=tests,
         methods=args.methods,
+        f_opt_map=f_opt_map,
+        thresholds=tuple(args.thresholds),
+        grid_type=args.grid_type,
+        qtt_levels=args.qtt_levels,
+        qtt_base=args.qtt_base,
+        qtt_z=args.qtt_z,
     )
-    df_results.to_csv("results.csv", index=False)
+
+    os.makedirs(args.out_dir, exist_ok=True)
+
+    for fn_name, df_fn in df_results.groupby("Function"):
+        results_path = os.path.join(args.out_dir, f"results_{fn_name}.csv")
+        df_fn.to_csv(results_path, index=False)
+        print(f"Saved results -> {results_path}")
+        save_best_errors_csv(
+            df_fn,
+            f_opt_map,
+            path=os.path.join(args.out_dir, f"best_errors_{fn_name}.csv"),
+            sci_digits=1,
+        )
+
     print(df_results)
-    print("Saved results")
-
-    # dimension-aware f_opt map (fills Michalewicz for D=5 or D=10)
-    f_opt_map = resolve_f_opt_map(F_OPT, args.num_dimensions)
-
     # Plots use the resolved map
-    make_plots(df_results, f_opt_map)
-    save_best_errors_csv(df_results, f_opt_map, path="best_errors.csv", sci_digits=1)
+    make_plots(df_results, f_opt_map, out_dir=os.path.join(args.out_dir, "plots"))
 
 
 if __name__ == "__main__":

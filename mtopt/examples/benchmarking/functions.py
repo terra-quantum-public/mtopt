@@ -1,6 +1,7 @@
 """Benchmarking functions and some corresponding helpers for optimization algorithms."""
 
 from __future__ import annotations
+from functools import lru_cache
 from typing import Callable, Dict, List, Tuple, Optional
 import math
 import numpy as np
@@ -87,47 +88,67 @@ def rosenbrock(x, a=1.0, b=100.0):
     return np.sum(b * (x[1:] - x[:-1] ** 2) ** 2 + (a - x[:-1]) ** 2)
 
 
-def multiwell(x, seed=42):
+@lru_cache(maxsize=None)
+def _multiwell_params(
+    D: int, seed: int
+) -> tuple[np.ndarray, np.ndarray, float, float, float]:
     """
-    Linear combination of m student-t wells with negative coefficients and different heights.
+    Cached parameters for Multiwell:
+      centers: (m, D)
+      amplitudes: (m,)
+      df: degrees of freedom (float)
+      power: exponent (float)
+      max_amp: maximum amplitude, i.e. max_k a_k (float)
 
-    Creates local minima distributed throughout the space. Each well has a different
-    amplitude (height) so they can be distinguished by a minimizer.
+    The global minimum of f(x) = min_k w_k(x) + max_amp is 0 by construction:
+    w_k(x) = -a_k / (1 + ||x-c_k||^2/df)^power >= -a_k, so min_k w_k >= -max_amp,
+    and equality holds at the center of the deepest well.
+    """
+    m = D
+    df = float(D)
+    power = float(D)
 
-    Parameters:
-    - x: input vector
-    - m: number of wells (default 5)
-    - seed: random seed for reproducible well placement
+    rng = np.random.RandomState(int(seed))  # deterministic across runs
+    centers = rng.uniform(-4.0, 4.0, size=(m, D)).astype(float)
+
+    # Strictly increasing amplitudes -> unique deepest well at index m-1.
+    amplitudes = (0.5 + 1.5 * (np.arange(1, m + 1, dtype=float) / m)).astype(float)
+
+    max_amp = float(np.max(amplitudes))
+
+    # Make cached arrays immutable to prevent accidental mutation of shared state.
+    centers.setflags(write=False)
+    amplitudes.setflags(write=False)
+    return centers, amplitudes, df, power, max_amp
+
+
+def multiwell(x, seed: int = 42) -> float:
+    """
+    Multiwell benchmark (Student-t wells), with **known global optimum value**.
+
+    For each well k:
+        w_k(x) = -a_k / (1 + ||x - c_k||^2 / df)^power,  with df=D and power=D.
+
+    Since (1 + ...)^power >= 1, we have w_k(x) >= -a_k, hence
+        min_k w_k(x) >= -max_k a_k.
+
+    We return:
+        f(x) = min_k w_k(x) + max_k a_k,
+
+    so f(x) >= 0 for all x and f(c_{k*}) = 0 at the center of the deepest well.
 
     Domain: [-5, 5]^D recommended
-    Global minimum: 0
+    Global minimum (value): 0.0 (by construction)
     """
-    x = np.asarray(x)
-    D = x.size
-    df = D  # degrees of freedom for student-t distribution
-    m = D
+    x = np.asarray(x, dtype=float)
+    D = int(x.size)
 
-    # Use a fixed random state for reproducible centers
-    rng = np.random.RandomState(seed)  # pylint: disable=E1101
+    centers, amplitudes, df, power, max_amp = _multiwell_params(D, int(seed))
 
-    # Linear combination of wells
-    total = 0.0
-    max_depth = 0.0  # Track deepest well to offset function
-
-    for i in range(m):
-        # Set centers randomly in domain [-4, 4] (slightly inside [-5, 5])
-        center = rng.uniform(-4.0, 4.0, size=D)
-
-        # Different amplitudes for each well (increasing depth)
-        amplitude = 0.5 + 1.5 * (i + 1) / m
-
-        # Student-t distribution with negative coefficient to create a well
-        dist_sq = np.sum((x - center) ** 2)
-        well_value = -amplitude / (1.0 + dist_sq / df) ** ((df + D) / 2.0)
-        total += well_value
-
-    # Offset so global minimum is 0
-    return total - max_depth
+    diff = centers - x[None, :]
+    dist_sq = np.sum(diff * diff, axis=1)  # (m,)
+    wells = -amplitudes / (1.0 + dist_sq / df) ** power  # (m,)
+    return float(np.min(wells) + max_amp)
 
 
 # Registry of functions and default bounds per dimension
@@ -167,7 +188,7 @@ F_OPT: Dict[str, float | None] = {
     "Schaffer": 0.0,
     "Schwefel": 0.0,
     "Rosenbrock": 0.0,
-    "Multiwell": None,  # instance/seed dependent
+    "Multiwell": 0.0,  # by construction (see multiwell shift)
 }
 
 

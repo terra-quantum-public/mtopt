@@ -72,6 +72,7 @@ __all__ = [
     "remove_edge",
     "add_layer_index",
     "tensor_train_graph",
+    "qtt_tensor_train_graph",
     "tensor_train_operator_graph",
     "build_tree",
     "balanced_tree",
@@ -710,6 +711,99 @@ def tensor_train_graph(
             r_val = graph.edges[edge]["r"]
             other = graph.edges[flip(edge)]["r"]
             graph.edges[edge]["r"] = min(r_val, other)
+
+    return graph
+
+
+def qtt_tensor_train_graph(
+    num_vars: int,
+    levels: int | List[int],
+    rank: int = 2,
+    base: int = 2,
+) -> nx.DiGraph:
+    r"""
+    Generate a QTT (quantized tensor-train) network graph.
+
+    Each original variable is discretized on ``base**L_k`` points but represented
+    as ``L_k`` digit coordinates (each of size ``base``). The returned graph is
+    a standard TT graph in this *digit space*, with ``sum_k L_k`` cores.
+
+    Coordinate convention
+    ---------------------
+    Digit coordinates are numbered in **var-major** order:
+
+    * For variable ``k`` with ``L_k`` digits, digit ids are ``ell=0..L_k-1``.
+    * The corresponding coordinate ids are consecutive and stored on leaf edges
+      under the standard ``"coordinate"`` attribute inherited from TT graphs.
+
+    The graph is annotated with:
+
+    * ``graph.graph["qtt"]`` metadata dict:
+      ``{"num_vars": ..., "levels": [...], "base": ..., "coord_map": [...]}``
+    * leaf-edge attributes ``"qtt_var"`` and ``"qtt_level"`` (for both leaf
+      directions).
+
+    Parameters
+    ----------
+    num_vars :
+        Number of original (physical) variables.
+    levels :
+        Either a single integer ``L`` (same quantization for all variables) or
+        a list ``[L_0, ..., L_{num_vars-1}]``.
+    rank :
+        Target internal TT rank.
+    base :
+        Digit base (2 for binary QTT).
+
+    Returns
+    -------
+    nx.DiGraph
+        A TT graph with ``sum(levels)`` cores and QTT metadata.
+    """
+    if num_vars <= 0:
+        raise ValueError("num_vars must be positive.")
+    if base < 2:
+        raise ValueError("base must be >= 2.")
+
+    if isinstance(levels, int):
+        if levels <= 0:
+            raise ValueError("levels must be a positive integer.")
+        levels_list = [levels] * num_vars
+    else:
+        levels_list = [int(L) for L in levels]
+        if len(levels_list) != num_vars:
+            raise ValueError(
+                f"levels must have length num_vars={num_vars}, got {len(levels_list)}."
+            )
+        if any(L <= 0 for L in levels_list):
+            raise ValueError("All levels must be positive integers.")
+
+    total_cores = int(sum(levels_list))
+
+    # Build the digit-space TT graph: each leaf has phys_dim == base.
+    graph = tensor_train_graph(total_cores, rank=rank, primitive_grid=base)
+
+    # Build mapping coord_id -> (var_id, digit_id)
+    coord_map: List[Tuple[int, int]] = []
+    for k, L in enumerate(levels_list):
+        for ell in range(L):
+            coord_map.append((k, ell))
+
+    graph.graph["qtt"] = {
+        "num_vars": int(num_vars),
+        "levels": levels_list,
+        "base": int(base),
+        "coord_map": coord_map,
+    }
+
+    # Annotate leaf edges (both directions) with qtt_var / qtt_level
+    for coord_id, (k, ell) in enumerate(coord_map):
+        leaf_edge = (coord_id, -coord_id - 1)
+        if leaf_edge in graph.edges:
+            graph.edges[leaf_edge]["qtt_var"] = k
+            graph.edges[leaf_edge]["qtt_level"] = ell
+            graph.edges[flip(leaf_edge)]["qtt_var"] = k
+            graph.edges[flip(leaf_edge)]["qtt_level"] = ell
 
     return graph
 

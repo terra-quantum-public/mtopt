@@ -8,16 +8,19 @@ authors:
   - name: Aleksandr Berezutskii
     orcid: 0009-0002-8149-135X
     affiliation: 1
-  - name: Roman Ellerbrock
-    orcid: 0000-0003-3555-6263
-    affiliation: 1
   - name: Alexander C. Paul
     orcid: 0000-0002-7547-445X
+    affiliation: 1
+  - name: Michael Perelshtein
+    orcid: 0000-0001-7912-1750
+    affiliation: 1
+  - name: Roman Ellerbrock
+    orcid: 0000-0003-3555-6263
     affiliation: 1
 affiliations:
  - name: Terra Quantum AG, Freddie-Mercury Str. 5, Munich, DE 80979
    index: 1
-date: 01 February 2026
+date: 01 March 2026
 bibliography: paper.bib
 ---
 

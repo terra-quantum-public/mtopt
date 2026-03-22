@@ -153,17 +153,32 @@ def random_grid_points(
             [[grids[d].grid[i, 0] for d, i in enumerate(pt)] for pt in indices]
         )
 
-    grid_sizes = [grid.grid.shape[0] for grid in primitive_grids]
-    total_combinations = np.prod(grid_sizes)
+    grid_sizes = [int(grid.grid.shape[0]) for grid in primitive_grids]
+
+    # NOTE: for QTT, the number of primitives can be large (e.g., D*L=160),
+    # and the total number of grid points is base^(D*L), which overflows
+    # int64 if computed via numpy. We only need to know whether
+    # total_combinations is smaller than n_samples (typically tiny), so we
+    # compute the product in Python integers and stop early once it is clear.
+    total_combinations = 1
+    product_complete = True
+    for s in grid_sizes:
+        total_combinations *= s
+        if total_combinations > n_samples:
+            # We already know the full product exceeds n_samples.
+            product_complete = False
+            break
 
     if n_samples <= 0:
         raise ValueError("n_samples must be positive")
-    if n_samples > total_combinations:
-        raise ValueError(
-            f"Cannot sample {n_samples} unique points from {total_combinations} total combinations"
-        )
-    if n_samples == total_combinations:
-        return cartesian_product(primitive_grids)
+    if product_complete:
+        # Exact total_combinations is known (and <= n_samples).
+        if n_samples > total_combinations:
+            raise ValueError(
+                f"Cannot sample {n_samples} unique points from {total_combinations} total combinations"
+            )
+        if n_samples == total_combinations:
+            return cartesian_product(primitive_grids)
 
     sampled_index_tuples = sample_unique_indices(grid_sizes, n_samples, seed)
     coords = indices_to_grid_points(sampled_index_tuples, primitive_grids)
@@ -202,7 +217,9 @@ def assignment_selection(grid: Grid, function: Callable, dim2: int, **kwargs):
     vmat = evaluate_grid(grid, function, dim2, **kwargs)
     rows, cols = linear_sum_assignment(vmat)
     # map (row_i, col_j) back to flat index
-    idcs = np.ravel_multi_index((rows, cols), vmat.shape)
+    idcs = np.ravel_multi_index(
+        (cols, rows), vmat.T.shape
+    )  # NOTE: evaluate_grid transposes
     grid.grid = grid.grid[idcs, :]
     return grid, vmat
 
@@ -236,7 +253,9 @@ def greedy_selection(grid: Grid, function: Callable, r: int, **kwargs):
     """
     vmat = evaluate_grid(grid, function, r, **kwargs)
     rows, cols = greedy_column_min(vmat)
-    idcs = np.ravel_multi_index((rows, cols), vmat.shape)
+    idcs = np.ravel_multi_index(
+        (cols, rows), vmat.T.shape
+    )  # NOTE: evaluate_grid transposes
     grid.grid = grid.grid[idcs, :]
     return grid, vmat
 
@@ -299,24 +318,36 @@ def greedy_with_group_assignment(
     matrix: np.ndarray, groups: np.ndarray
 ) -> tuple[list[int], list[int]]:
     """
-    Run linear assignment poblem solver separately for each group of columns.
+    Run a per-group linear assignment. If a group has more columns than there are
+    available rows (i.e. matrix is rectangular with R < C_group), fall back to a
+    per-column argmin within that group (allowing row reuse) so that every column
+    receives a valid row index.
 
     Args:
       matrix: (R x C) cost matrix.
       groups: length-C array assigning each column to a group.
 
     Returns:
-      rows:    selected row indices per column.
-      cols:    column indices (0..C-1) in order.
+      rows: selected row indices per column (length C).
+      cols: column indices (0..C-1) in order.
     """
-    matrix = np.array(matrix)
-    selected_rows = np.full(matrix.shape[1], -1)
-    for g in set(groups):
+    matrix = np.asarray(matrix)
+    R, C = matrix.shape
+    selected_rows = np.full(C, -1, dtype=int)
+
+    for g in np.unique(groups):
         cols_g = np.flatnonzero(groups == g)
-        # @todo: first make maxvol inside a group submatrix and then do linear sum assignment inside the maxvol matrix
-        rows_g, cols_sub = linear_sum_assignment(matrix[:, cols_g])
-        selected_rows[cols_g[cols_sub]] = rows_g
-    return list(selected_rows), list(range(matrix.shape[1]))
+        sub = matrix[:, cols_g]
+
+        if sub.shape[0] >= sub.shape[1]:
+            # Standard one-to-one assignment inside the group.
+            rows_g, cols_sub = linear_sum_assignment(sub)
+            selected_rows[cols_g[cols_sub]] = rows_g
+        else:
+            # Not enough rows to assign uniquely: pick best row per column.
+            selected_rows[cols_g] = np.argmin(sub, axis=0)
+
+    return list(selected_rows), list(range(C))
 
 
 def group_assignment(

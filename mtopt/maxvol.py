@@ -11,20 +11,23 @@ algorithms for tall matrices:
 
 Provenance
 ----------
-This module contains code adapted from the pyQuTree package by Roman Ellerbrock
-(see Ref. [2]). The underlying library and concepts are described in the QuTree
-paper (Ref. [1]).
+This module contains code adapted from the teneva package by Andrei Chertkov
+(see Ref. [3]). The underlying library and concepts are described in the Refs [1] and [2].
 
 References
 ----------
-.. [1] R. Ellerbrock, K. G. Johnson, S. Seritan, H. Hoppe, J. H. Zhang,
-       T. Lenzen, T. Weike, U. Manthe, and T. J. Martínez,
-       "QuTree: A tree tensor network package",
-       *J. Chem. Phys.* **160**(11), 112501 (2024).
-       doi:10.1063/5.0180233
+.. [1] A. Chertkov, G. Ryzhakov, and I. Oseledets,
+       "Black box approximation in the tensor train format initialized by ANOVA decomposition",
+       *SIAM J. Sci. Comput.* **45**(4), A2101-A2118 (2023).
+       doi:10.1137/22M1514088
 
-.. [2] R. Ellerbrock, *pyQuTree* (software), Python package ``pyQuTree``.
-       Source: https://github.com/roman-ellerbrock/pyQuTree
+.. [2] A. Chertkov, G. Ryzhakov, G. Novikov, and I. Oseledets,
+       "Tensor extrema estimation via sampling: A new approach for determining min/max elements",
+       *Comput. Sci. Eng.* **25**(5), 14-25 (2023).
+       doi:10.1109/MCSE.2023.3346208
+
+.. [3] A. Chertkov, *teneva* (software), Python package ``teneva``.
+       Source: https://github.com/AndreiChertkov/teneva
 """
 
 from __future__ import annotations

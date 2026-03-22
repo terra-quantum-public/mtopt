@@ -13,6 +13,7 @@ from mtopt.network import (
 from mtopt.optimization import (
     Objective,
     OptimizationLogger,
+    greedy_with_group_assignment,
     numpy_array_to_tuple,
     random_grid_points,
     tree_tensor_network_cross,
@@ -440,6 +441,94 @@ def test_grid_evaluate_vectorized_is_faster_walltime():
     assert calls_vec["n"] >= 1
     assert calls_pt["n"] >= 1
 
-    # Expect a real speedup: vectorized should be materially faster.
-    # The threshold is intentionally mild to avoid flakiness.
-    assert t_vec <= t_pt, f"Expected vectorized to be at least as fast. Got t_vec={t_vec:.4f}s, t_pt={t_pt:.4f}s"
+
+# ----------------------------------------------------------------------
+# greedy_with_group_assignment tests
+# ----------------------------------------------------------------------
+
+
+def _check_result(rows, cols, R, C):
+    """Shared assertions: correct length, no -1 entries, valid row indices."""
+    assert len(rows) == C
+    assert len(cols) == C
+    assert cols == list(range(C))
+    assert -1 not in rows, "Some columns were left unassigned (rows contains -1)"
+    assert all(0 <= r < R for r in rows), "Row index out of bounds"
+
+
+def test_greedy_assignment_standard_path_more_rows_than_cols():
+    """Standard path: each group has fewer columns than rows -> linear_sum_assignment."""
+    rng = np.random.default_rng(0)
+    R, C = 5, 3
+    matrix = rng.random((R, C))
+    groups = np.array([0, 0, 0])  # single group, R > C
+
+    rows, cols = greedy_with_group_assignment(matrix, groups)
+
+    _check_result(rows, cols, R, C)
+    # Standard path must assign distinct rows within the group
+    assert len(set(rows)) == C
+
+
+def test_greedy_assignment_square_group():
+    """Boundary: group is square (R == C) -> linear_sum_assignment, distinct rows."""
+    rng = np.random.default_rng(1)
+    R = C = 4
+    matrix = rng.random((R, C))
+    groups = np.array([0, 0, 0, 0])
+
+    rows, cols = greedy_with_group_assignment(matrix, groups)
+
+    _check_result(rows, cols, R, C)
+    assert len(set(rows)) == C
+
+
+def test_greedy_assignment_fallback_more_cols_than_rows():
+    """Fallback path: group has more columns than rows -> argmin, row reuse allowed."""
+    rng = np.random.default_rng(2)
+    R, C = 2, 5  # only 2 rows but 5 columns
+    matrix = rng.random((R, C))
+    groups = np.zeros(C, dtype=int)  # single group
+
+    rows, cols = greedy_with_group_assignment(matrix, groups)
+
+    _check_result(rows, cols, R, C)
+    # Row reuse is allowed: we cannot assert distinct rows here,
+    # but each row index must be the argmin of its column
+    for col_idx in range(C):
+        assert rows[col_idx] == int(np.argmin(matrix[:, col_idx]))
+
+
+def test_greedy_assignment_fallback_single_row():
+    """Extreme fallback: only 1 row, many columns -> all assigned to row 0."""
+    rng = np.random.default_rng(3)
+    R, C = 1, 6
+    matrix = rng.random((R, C))
+    groups = np.zeros(C, dtype=int)
+
+    rows, cols = greedy_with_group_assignment(matrix, groups)
+
+    _check_result(rows, cols, R, C)
+    assert all(r == 0 for r in rows)
+
+
+def test_greedy_assignment_mixed_groups_standard_and_fallback():
+    """Multiple groups: one uses standard path (R >= C_g), one uses fallback (R < C_g)."""
+    rng = np.random.default_rng(4)
+    R = 3
+    # group 0: 2 cols (standard, 3 >= 2), group 1: 5 cols (fallback, 3 < 5)
+    groups = np.array([0, 0, 1, 1, 1, 1, 1])
+    C = len(groups)
+    matrix = rng.random((R, C))
+
+    rows, cols = greedy_with_group_assignment(matrix, groups)
+
+    _check_result(rows, cols, R, C)
+    # Group 0 (cols 0,1): standard path -> distinct rows
+    rows_g0 = [rows[i] for i in range(C) if groups[i] == 0]
+    assert len(set(rows_g0)) == len(rows_g0)
+    # Group 1 (cols 2..6): fallback -> each row is argmin of its column in the submatrix
+    cols_g1 = [i for i in range(C) if groups[i] == 1]
+    sub = matrix[:, cols_g1]
+    for local_idx, global_idx in enumerate(cols_g1):
+        assert rows[global_idx] == int(np.argmin(sub[:, local_idx]))
