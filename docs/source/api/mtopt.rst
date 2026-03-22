@@ -44,6 +44,14 @@ mtopt.plot module
    :show-inheritance:
    :undoc-members:
 
+mtopt.qtt module
+----------------
+
+.. automodule:: mtopt.qtt
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
 mtopt.tensor module
 -------------------
 
