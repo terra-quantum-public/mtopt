@@ -73,14 +73,12 @@ G = balanced_tree(num_leaves=3, rank=rank, phys_dim=len(x0))
 G = tensor_network_grid(G, primitive_grid=[x0, x1, x2])
 obj = Objective(sphere)
 G = tree_tensor_network_optimize(G, obj, num_sweeps=epochs)
-
-# Extract best candidate from the root node’s grid
-build_node_grid(G)
-root_grid = G.nodes[root(G)]["grid"]
-vals_ttn = root_grid.evaluate(sphere)
-i_ttn = int(np.argmin(vals_ttn))
-x_ttn, f_ttn = root_grid.grid[i_ttn], float(vals_ttn[i_ttn])
-print("TTN  -> x* =", np.round(x_ttn, 4), "f* =", f"{f_ttn:.6f}")
+df = obj.logger.dataframe
+coord_cols = [c for c in df.columns if c.startswith("x")]
+top_k = df.nsmallest(3, "f")[coord_cols + ["f"]].reset_index(drop=True)
+top_k.index += 1
+print("TTN top-3 optima:")
+print(top_k.to_string())
 ```
 
 ## Examples
