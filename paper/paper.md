@@ -26,12 +26,13 @@ bibliography: paper.bib
 
 # Summary
 
-**mtopt** is a lightweight Python library that implements two optimizers for black-box optimization on discrete grids by extending matrix cross approximation to two distinct types of tensor networks. The first, **Tensor Rank Cross (TRC)** is a cross approximation for tensor rank decomposition (also called canonical diadic decomposition (Candecomp)). The second, **Matrix Train Cross (MTC)** approximation is a cross approximation that combines features of TRC and Tensor Train (also called Matrix Product State (MPS)) decomposition. Both methods build low‑rank tensor representations of a function from a small number of function evaluations, then extract candidate optima directly from the representations. The package is designed specifically for high-dimensional functions with multiple local minima, where each function evaluation is computationally expensive.
+**mtopt** is a lightweight Python library that implements several optimizers on discrete grids by extending matrix cross approximation to several types of tensor networks. The first, **Tensor Rank Cross (TRC)** is a cross approximation for tensor rank decomposition (also called canonical diadic decomposition (Candecomp)). The second, **Matrix Train Cross (MTC)** approximation is a cross approximation that combines features of TRC and Tensor Train (also called Matrix Product State (MPS)) decomposition. Finally, the package also includes a general Tree Tensor Network (TTN) optimizer that can be applied to any user-defined tree structure. The methods build low‑rank tensor representations of a function from a small number of function evaluations, then extract candidate optima directly from the representations. The package is designed specifically for high-dimensional functions with multiple local minima, where each function evaluation is computationally expensive.
 
 
 # Statement of need
 
-Most real-world optimization problems are high-dimensional and nonconvex, with little room for extra evaluations. General‑purpose gradient‑free methods (for example, direct search or evolutionary strategies) are robust but often require many evaluations to locate good solutions. Tensor network decompositions offer an orthogonal strategy: they approximate the function on a discrete grid with a compact representation. In this structure, minima and maxima are obtained automatically as part of the compression[oseledets2010tt][sozykin2022ttopt][dolgov2025tensor]. Here, we present a lightweight toolchain that extends the idea of cross approximation to different tensor network architectures including tree tensor networks, tensor rank decompositions, and a combination of tensor trains and tensor rank decompositions (what we call matrix trains).
+Many real-world optimization problems are high-dimensional and non-convex, with expensive objective function evaluations. General‑purpose gradient‑free methods (for example, direct search or evolutionary strategies) are robust but often require many evaluations to locate good solutions. Tensor network decompositions offer an orthogonal strategy: they approximate the function on a discrete grid with a compact representation. In this structure, minima and maxima are obtained automatically as part of the compression[oseledets2010tt][sozykin2022ttopt][dolgov2025tensor] and the number of function evaluations is tied to the chosen rank. However, different functions need different tensor-network architectures, so a single architecture is rarely optimal across different problems. The current package addresses this by providing optimizers for several architectures, such as tree tensor networks, tensor-rank decompositions, and hybrid matrix-train models combining tensor trains with tensor-rank structure. The package extends sample-efficient low-rank optimization to a broader range of functions, as reflected in our benchmarks.
+
 
 # Functionality
 
@@ -98,14 +99,12 @@ G = balanced_tree(num_leaves=3, rank=rank, phys_dim=len(x0))
 G = tensor_network_grid(G, primitive_grid=[x0, x1, x2])
 obj = Objective(sphere)
 G = tree_tensor_network_optimize(G, obj, num_sweeps=epochs)
-
-# Extract best candidate from the root node’s grid
-build_node_grid(G)
-root_grid = G.nodes[root(G)]["grid"]
-vals_ttn = root_grid.evaluate(sphere)
-i_ttn = int(np.argmin(vals_ttn))
-x_ttn, f_ttn = root_grid.grid[i_ttn], float(vals_ttn[i_ttn])
-print("TTN  -> x* =", np.round(x_ttn, 4), "f* =", f"{f_ttn:.6f}")
+df = obj.logger.dataframe
+coord_cols = [c for c in df.columns if c.startswith("x")]
+top_k = df.nsmallest(3, "f")[coord_cols + ["f"]].reset_index(drop=True)
+top_k.index += 1
+print("TTN top-3 optima:")
+print(top_k.to_string())
 ```
 
 Following the minimal example above, users can easily adapt the objective, discretization, rank schedule, and evaluation budget to their application. Additional usage examples as well as the detailed API documentation are provided in the
