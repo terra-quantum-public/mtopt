@@ -29,4 +29,4 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry.group.dev.dependencies]
 pytest = "^9.0.2"
 ruff = "^0.14.6"
-pylint = "^4.0.4"
+pylint = "^4.0.5"
