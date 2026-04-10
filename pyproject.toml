@@ -6,9 +6,9 @@ authors = [
     { name = "Roman Ellerbrock", email = "re@terraquantum.swiss" },
     { name = "Aleksandr Berezutskii", email = "albe@terraquantum.swiss" },
 ]
-license-files = ["LICENSE.md"]
+license-files = ["LICENSE.md", "NOTICE.md"]
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     "numpy (>=2.3.4,<3.0.0)",
     "scipy (>=1.16.3,<2.0.0)",
