@@ -1,21 +1,19 @@
 # `mtopt` — tensor rank cross and matrix train cross optimizers.
 
-[![lint](https://github.com/terra-quantum-io/mtopt/actions/workflows/lint.yml/badge.svg)](https://github.com/terra-quantum-io/mtopt/actions/workflows/lint.yml)
-[![tests](https://github.com/terra-quantum-io/mtopt/actions/workflows/tests.yml/badge.svg)](https://github.com/terra-quantum-io/mtopt/actions/workflows/tests.yml)
-[![dependency review](https://github.com/terra-quantum-io/mtopt/actions/workflows/dependency-review.yml/badge.svg)](https://github.com/terra-quantum-io/mtopt/actions/workflows/dependency-review.yml)
-[![CI](https://github.com/terra-quantum-io/mtopt/actions/workflows/ci.yml/badge.svg)](https://github.com/terra-quantum-io/mtopt/actions/workflows/ci.yml)
+[![CI & CD](https://github.com/terra-quantum-public/mtopt/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/terra-quantum-public/mtopt/actions/workflows/ci-cd.yml)
+[![dependency review](https://github.com/terra-quantum-public/mtopt/actions/workflows/dependency-review.yml/badge.svg)](https://github.com/terra-quantum-public/mtopt/actions/workflows/dependency-review.yml)
 
 ##### `mtopt` is a lightweight Python library that implements several optimizers on discrete grids by extending matrix cross approximation to several types of tensor networks. The first, **Tensor Rank Cross (TRC)** is a cross approximation for tensor rank decomposition (also called canonical diadic decomposition (Candecomp)). The second, **Matrix Train Cross (MTC)** approximation is a cross approximation that combines features of TRC and Tensor Train (also called Matrix Product State (MPS)) decomposition. Finally, the package also includes a general Tree Tensor Network (TTN) optimizer that can be applied to any user-defined tree structure. The methods build low‑rank tensor representations of a function from a small number of function evaluations, then extract candidate optima directly from the representations. The package is designed specifically for high-dimensional functions with multiple local minima, where each function evaluation is computationally expensive.
 
 ## Installation
 
-To install the current release, use the package manager [pip](https://pip.pypa.io/en/stable/).
+To install the current release from the Terra Quantum package registry, use [pip](https://pip.pypa.io/en/stable/):
 
 ```bash
-pip install mtopt
+pip install mtopt --extra-index-url https://europe-python.pkg.dev/bright-primacy-486519-b9/tq-public/simple
 ```
 
-Otherwise, you can clone the repository and use [poetry](https://python-poetry.org/).
+Or clone the repository and use [poetry](https://python-poetry.org/):
 
 ```bash
 poetry install
@@ -99,50 +97,16 @@ If you happen to find `mtopt` useful in your work, please consider supporting de
 }
 ```
 
-## Contribution guidelines
+## Contributing
 
-If you want to contribute to `mtopt`, be sure to follow GitHub's contribution guidelines.
-This project adheres to our [code of conduct](https://github.com/terra-quantum-io/mtopt/blob/main/CODE_OF_CONDUCT.md).
-By participating, you are expected to uphold this code.
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide — including how to fork the repository, set up an upstream remote, open a pull request, and our commit message conventions.
 
-We use [GitHub issues](https://github.com/terra-quantum-io/mtopt/issues) for
-tracking requests and bugs, please direct specific questions to the maintainers.
-
-The `mtopt` project strives to abide by generally accepted best practices in
-open-source software development, such as:
-
-*   apply the desired changes and resolve any code
-    conflicts,
-*   run the tests and ensure they pass,
-*   build the package from source.
-
-Developers may find the following guidelines useful:
-
-- **Running tests.**
-  Tests are executed using [pytest](https://docs.pytest.org/):
-  ```bash
-  pytest tests
-  ```
-
-- **Building documentation.**
-  Documentation is built with [Sphinx](https://www.sphinx-doc.org/).
-  A convenience script is provided:
-
-  ```bash
-  ./generate_docs.sh
-  ```
-
-- **Coding style.**
-  The project follows the [Black](https://black.readthedocs.io/en/stable/) code style.
-  Please run Black before submitting a pull request:
-
-  ```bash
-  black .
-  ```
+To report bugs or request features, open an [issue](https://github.com/terra-quantum-public/mtopt/issues).
 
 ## License
 
-This project is licensed under the custom [Terra Quantum License](https://terraquantum.io/content/legal/eula-tq42-tqml/).
+This project is licensed under the terms described in [LICENSE.md](LICENSE.md).
+See [NOTICE.md](NOTICE.md) for additional attribution and third-party notices.
 
 ## Documentation
 

@@ -1,0 +1,148 @@
+name: CI & CD
+
+on:
+  release:
+    types:
+      - released
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Set up Poetry
+        run: pip install poetry
+      - name: Install dependencies
+        run: poetry install --with dev
+      - name: Run formatter
+        run: poetry run ruff format --check mtopt tests
+      - name: Run linter
+        run: poetry run pylint mtopt --fail-under=7
+
+  test:
+    name: tests (${{ matrix.os }}, py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+        python: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Show Python
+        run: python -V && pip -V
+      - name: Install package + test deps
+        run: |
+          python -m pip install -U pip
+          pip install poetry
+          poetry install --with dev
+      - name: Run tests
+        run: |
+          poetry run pytest -q --disable-warnings --maxfail=1
+  
+
+  build:
+    name: Build
+    runs-on: ubuntu-24.04
+    needs: test
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install dependencies
+        run: |
+          python -m pip install -U pip
+          pip install poetry
+          poetry install
+      - name: Update version in poetry.toml
+        run: |
+          NEXT_VERSION=$(poetry version --short)
+
+          if [[ "IS_RELEASE" == "true" ]]; then
+            NEXT_VERSION="${{ github.event.release.tag_name }}"   
+          else
+            NEXT_VERSION="${NEXT_VERSION}+${GITHUB_SHA:0:7}"
+          fi
+
+          poetry version $NEXT_VERSION
+        env:
+          IS_RELEASE: ${{ github.event_name == 'release' }}
+      - name: Build package
+        run: poetry build
+      - name: Upload wheel as artifact
+        uses: actions/upload-artifact@v7
+        with:
+          path: dist/*.whl
+          name: mtopt
+
+  release:
+    if: github.event_name == 'release'
+    name: Publish package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    needs: build
+    steps:
+      - uses: actions/checkout@v6
+      - name: Authenticate with GCP
+        id: 'auth'
+        uses: google-github-actions/auth@v3
+        with:
+          token_format: access_token
+          workload_identity_provider: "projects/551843130053/locations/global/workloadIdentityPools/gha-identitypool/providers/gha-provider"
+          service_account: "sa-github-actions@bright-primacy-486519-b9.iam.gserviceaccount.com"
+          access_token_lifetime: 300s
+          create_credentials_file: true
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install dependencies
+        run: |
+          python -m pip install -U pip
+          pip install twine
+      - name: Download wheel artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: mtopt
+          path: dist
+      - name: Publish to GCP artifacts registry
+        run: |
+          REGISTRY=https://europe-python.pkg.dev/bright-primacy-486519-b9/tq-public/
+          twine upload --repository-url $REGISTRY --username oauth2accesstoken --password ${{ steps.auth.outputs.access_token }} dist/*.whl
+
+  delete_artifacts:
+    name: Delete ephemeral artifacts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+    needs:
+      - build
+      - release
+    if: always()
+    steps:
+      - uses: geekyeggo/delete-artifact@v6
+        with:
+          name: |
+            mtopt
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true

@@ -167,3 +167,5 @@ __marimo__/
 # Data
 *.csv
 plots/
+
+.idea
