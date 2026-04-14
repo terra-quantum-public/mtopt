@@ -1,0 +1,8 @@
+# This file specifies the code owners for this repository. Code owners are automatically requested for review when someone opens a pull request that modifies code that they own.
+* @roman-ellerbrock-tq @meandmytram
+
+# Owners for github-actions
+/.github/ @cedrictq
+/.github/ISSUE_TEMPLATE/
+
+
