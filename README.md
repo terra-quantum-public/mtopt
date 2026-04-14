@@ -19,6 +19,22 @@ Or clone the repository and use [poetry](https://python-poetry.org/):
 poetry install
 ```
 
+### Optional dependencies
+
+The core library has no plotting dependencies. Functions in `mtopt.plot` require one or more of the following, depending on what you use:
+
+| Extra | Required by |
+|---|---|
+| `plotly` | 3D point cloud and animated scatter plots |
+| `matplotlib` | Tensor-train and tree tensor network diagrams |
+| `imageio` | Exporting animations (GIF/video) |
+
+Install only what you need:
+
+```bash
+pip install plotly matplotlib imageio
+```
+
 ## Minimal example
 
 ```python

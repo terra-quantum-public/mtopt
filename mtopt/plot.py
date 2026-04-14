@@ -11,6 +11,18 @@ Most functions are thin wrappers around :mod:`matplotlib`, :mod:`plotly`,
 and :mod:`pandas`. These libraries are treated as optional dependencies
 and are imported lazily inside the plotting routines.
 
+.. note::
+    The functions in this module have the following optional dependencies
+    that are **not** installed automatically with ``mtopt``:
+
+    * :mod:`plotly` — required for 3D point cloud and animated scatter plots.
+    * :mod:`matplotlib` — required for tensor-train and tree tensor network diagrams.
+    * :mod:`imageio` — required for exporting animated plots (GIF/video).
+
+    Install only what you need, e.g.::
+
+        pip install plotly matplotlib imageio
+
 Provenance
 ----------
 This module contains code adapted from the pyQuTree package by Roman Ellerbrock
