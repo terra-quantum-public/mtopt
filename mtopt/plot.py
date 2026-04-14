@@ -35,10 +35,6 @@ from typing import Any, List, Sequence
 import shutil
 import os
 
-import plotly.graph_objects as go
-import plotly.express as px
-import matplotlib.pyplot as plt
-import imageio.v2 as imageio
 import networkx as nx
 import pandas as pd
 import numpy as np
@@ -101,6 +97,11 @@ def plot_xyz(
     This function requires :mod:`plotly` to be installed. If it is not
     available, an :class:`ImportError` is raised.
     """
+
+    try:
+        import plotly.graph_objects as go
+    except ImportError:
+        raise ImportError("Install plotly to use plot_xyz().")
 
     if isinstance(grid, Grid):
         points = grid.grid
@@ -193,6 +194,11 @@ def plot_tensor_train_diagram(
     This function requires :mod:`matplotlib` to be installed. If it is
     not available, an :class:`ImportError` is raised.
     """
+
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        raise ImportError("Install matplotlib to use plot_tensor_network().")
 
     num_leaves = len(up_leaves(graph))
 
@@ -363,6 +369,11 @@ def plot_tree(
     matplotlib.axes.Axes
         The Matplotlib axes on which the tree was drawn.
     """
+
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        raise ImportError("Install matplotlib to use plot_tree().")
 
     graph = add_layer_index(graph)
     num_leaves = len(up_leaves(graph))
@@ -562,6 +573,11 @@ def grid_animation(
     If they are not available, an :class:`ImportError` is raised.
     """
 
+    try:
+        import plotly.express as px
+    except ImportError:
+        raise ImportError("Install plotly to use grid_animation().")
+
     fig = px.scatter_3d(
         dataframe,
         x="x1",
@@ -650,6 +666,12 @@ def grid_animation_to_gif(
     to be installed. If they are not available, an :class:`ImportError`
     is raised.
     """
+
+    try:
+        import imageio.v2 as imageio
+        import plotly.express as px
+    except ImportError:
+        raise ImportError("Install imageio and plotly to use grid_animation().")
 
     os.makedirs(frames_folder, exist_ok=True)
 
