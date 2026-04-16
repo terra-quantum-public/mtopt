@@ -11,6 +11,18 @@ Most functions are thin wrappers around :mod:`matplotlib`, :mod:`plotly`,
 and :mod:`pandas`. These libraries are treated as optional dependencies
 and are imported lazily inside the plotting routines.
 
+.. note::
+    The functions in this module have the following optional dependencies
+    that are **not** installed automatically with ``mtopt``:
+
+    * :mod:`plotly` — required for 3D point cloud and animated scatter plots.
+    * :mod:`matplotlib` — required for tensor-train and tree tensor network diagrams.
+    * :mod:`imageio` — required for exporting animated plots (GIF/video).
+
+    Install only what you need, e.g.::
+
+        pip install plotly matplotlib imageio
+
 Provenance
 ----------
 This module contains code adapted from the pyQuTree package by Roman Ellerbrock
@@ -35,10 +47,6 @@ from typing import Any, List, Sequence
 import shutil
 import os
 
-import plotly.graph_objects as go
-import plotly.express as px
-import matplotlib.pyplot as plt
-import imageio.v2 as imageio
 import networkx as nx
 import pandas as pd
 import numpy as np
@@ -101,6 +109,11 @@ def plot_xyz(
     This function requires :mod:`plotly` to be installed. If it is not
     available, an :class:`ImportError` is raised.
     """
+
+    try:
+        import plotly.graph_objects as go
+    except ImportError:
+        raise ImportError("Install plotly to use plot_xyz().")
 
     if isinstance(grid, Grid):
         points = grid.grid
@@ -193,6 +206,11 @@ def plot_tensor_train_diagram(
     This function requires :mod:`matplotlib` to be installed. If it is
     not available, an :class:`ImportError` is raised.
     """
+
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        raise ImportError("Install matplotlib to use plot_tensor_network().")
 
     num_leaves = len(up_leaves(graph))
 
@@ -363,6 +381,11 @@ def plot_tree(
     matplotlib.axes.Axes
         The Matplotlib axes on which the tree was drawn.
     """
+
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        raise ImportError("Install matplotlib to use plot_tree().")
 
     graph = add_layer_index(graph)
     num_leaves = len(up_leaves(graph))
@@ -562,6 +585,11 @@ def grid_animation(
     If they are not available, an :class:`ImportError` is raised.
     """
 
+    try:
+        import plotly.express as px
+    except ImportError:
+        raise ImportError("Install plotly to use grid_animation().")
+
     fig = px.scatter_3d(
         dataframe,
         x="x1",
@@ -650,6 +678,12 @@ def grid_animation_to_gif(
     to be installed. If they are not available, an :class:`ImportError`
     is raised.
     """
+
+    try:
+        import imageio.v2 as imageio
+        import plotly.express as px
+    except ImportError:
+        raise ImportError("Install imageio and plotly to use grid_animation().")
 
     os.makedirs(frames_folder, exist_ok=True)
 
