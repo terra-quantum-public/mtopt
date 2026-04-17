@@ -1,5 +1,5 @@
 [project]
-name = "mtopt"
+name = "tq-mtopt"
 version = "0.1.0"
 description = "Tensor rank cross and matrix train optimizers."
 authors = [
