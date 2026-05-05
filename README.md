@@ -10,7 +10,7 @@
 To install the current release from the Terra Quantum package registry, use [pip](https://pip.pypa.io/en/stable/):
 
 ```bash
-pip install mtopt --extra-index-url https://europe-python.pkg.dev/bright-primacy-486519-b9/tq-public/simple
+pip install tq-mtopt --extra-index-url https://europe-python.pkg.dev/bright-primacy-486519-b9/tq-public/simple
 ```
 
 Or clone the repository and use [poetry](https://python-poetry.org/):
