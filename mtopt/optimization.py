@@ -520,7 +520,17 @@ class OptimizationLogger:
     """
 
     def __init__(self) -> None:
-        self.dataframe: pd.DataFrame = pd.DataFrame()
+        self._records: list = []
+        self._dataframe_cache: Optional[pd.DataFrame] = None
+
+    @property
+    def dataframe(self) -> pd.DataFrame:
+        if self._dataframe_cache is None:
+            if self._records:
+                self._dataframe_cache = pd.DataFrame(self._records)
+            else:
+                self._dataframe_cache = pd.DataFrame()
+        return self._dataframe_cache
 
     def __call__(self, record: Mapping[str, Any]) -> None:
         r"""
@@ -532,17 +542,16 @@ class OptimizationLogger:
             Mapping from column name to value. Typical keys include
             ``"x1"``, ``"x2"``, ..., and ``"f"`` for the objective.
         """
-        self.dataframe = pd.concat(
-            [self.dataframe, pd.DataFrame(record, index=[0])],
-            ignore_index=True,
-        )
+        self._records.append(dict(record))
+        self._dataframe_cache = None
 
     def __str__(self) -> str:  # pragma: no cover - mostly formatting
-        if "f" not in self.dataframe.columns or self.dataframe.empty:
+        df = self.dataframe
+        if "f" not in df.columns or df.empty:
             return "No logged records."
 
-        best_idx = self.dataframe["f"].idxmin()
-        best_row = self.dataframe.loc[best_idx]
+        best_idx = df["f"].idxmin()
+        best_row = df.loc[best_idx]
         return f"Optimal value:\n{best_row}"
 
 
