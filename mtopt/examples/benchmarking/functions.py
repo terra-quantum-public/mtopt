@@ -89,9 +89,7 @@ def rosenbrock(x, a=1.0, b=100.0):
 
 
 @lru_cache(maxsize=None)
-def _multiwell_params(
-    D: int, seed: int
-) -> tuple[np.ndarray, np.ndarray, float]:
+def _multiwell_params(D: int, seed: int) -> tuple[np.ndarray, np.ndarray, float]:
     """
     Cached parameters for Multiwell:
       centers:    (m, D) — well centers, uniform in [-4, 4]^D
@@ -115,7 +113,7 @@ def _multiwell_params(
     phi_kj = 1.0 / (1.0 + ((centers[:, None, :] - centers[None, :, :]) / sigma) ** 2)
     # pair_kj[k, j] = sum_{i=0}^{D-2} phi_kj[k,j,i] * phi_kj[k,j,i+1]
     pair_kj = np.sum(phi_kj[:, :, :-1] * phi_kj[:, :, 1:], axis=2)  # (m, m)
-    g_at_centers = pair_kj @ amplitudes                               # (m,)
+    g_at_centers = pair_kj @ amplitudes  # (m,)
     max_g = float(np.max(g_at_centers))
 
     centers.setflags(write=False)
@@ -162,7 +160,7 @@ def multiwell(x, seed: int = 42) -> float:
     # Nearest-neighbour pair products: phi[k,i]*phi[k,i+1]  shape: (m, D-1)
     pair_values = phi[:, :-1] * phi[:, 1:]
     # Sum over adjacent pairs for each well k, then weighted sum over wells
-    well_values = np.sum(pair_values, axis=1)           # (m,)
+    well_values = np.sum(pair_values, axis=1)  # (m,)
     return float(max_g - np.dot(amplitudes, well_values))
 
 
