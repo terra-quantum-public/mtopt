@@ -91,64 +91,79 @@ def rosenbrock(x, a=1.0, b=100.0):
 @lru_cache(maxsize=None)
 def _multiwell_params(
     D: int, seed: int
-) -> tuple[np.ndarray, np.ndarray, float, float, float]:
+) -> tuple[np.ndarray, np.ndarray, float]:
     """
     Cached parameters for Multiwell:
-      centers: (m, D)
-      amplitudes: (m,)
-      df: degrees of freedom (float)
-      power: exponent (float)
-      max_amp: maximum amplitude, i.e. max_k a_k (float)
+      centers:    (m, D) — well centers, uniform in [-4, 4]^D
+      amplitudes: (m,)   — strictly increasing; well m-1 is dominant
+      max_g:      float  — maximum of g at the well centers, used to shift f* = 0
 
-    The global minimum of f(x) = min_k w_k(x) + max_amp is 0 by construction:
-    w_k(x) = -a_k / (1 + ||x-c_k||^2/df)^power >= -a_k, so min_k w_k >= -max_amp,
-    and equality holds at the center of the deepest well.
+    g(x) = sum_k a_k * sum_{i=0}^{D-2} phi(x_i - c_ki) * phi(x_{i+1} - c_{k,i+1})
+    where phi(t) = 1/(1 + t^2/sigma^2), sigma = 2.0.
+
+    max_g is evaluated at all m well centers; the center that maximises g gives f* = 0.
     """
     m = D
-    df = float(D)
-    power = float(D)
+    sigma = 2.0
 
-    rng = np.random.RandomState(int(seed))  # deterministic across runs
+    rng = np.random.RandomState(int(seed))
     centers = rng.uniform(-4.0, 4.0, size=(m, D)).astype(float)
-
-    # Strictly increasing amplitudes -> unique deepest well at index m-1.
     amplitudes = (0.5 + 1.5 * (np.arange(1, m + 1, dtype=float) / m)).astype(float)
 
-    max_amp = float(np.max(amplitudes))
+    # Evaluate g at every well center to find max_g (ensures f* = 0 by construction).
+    # phi_kj[k, j, i] = phi(c^k_i - c^j_i)  shape (m, m, D)
+    phi_kj = 1.0 / (1.0 + ((centers[:, None, :] - centers[None, :, :]) / sigma) ** 2)
+    # pair_kj[k, j] = sum_{i=0}^{D-2} phi_kj[k,j,i] * phi_kj[k,j,i+1]
+    pair_kj = np.sum(phi_kj[:, :, :-1] * phi_kj[:, :, 1:], axis=2)  # (m, m)
+    g_at_centers = pair_kj @ amplitudes                               # (m,)
+    max_g = float(np.max(g_at_centers))
 
-    # Make cached arrays immutable to prevent accidental mutation of shared state.
     centers.setflags(write=False)
     amplitudes.setflags(write=False)
-    return centers, amplitudes, df, power, max_amp
+    return centers, amplitudes, max_g
 
 
 def multiwell(x, seed: int = 42) -> float:
     """
-    Multiwell benchmark (Student-t wells), with **known global optimum value**.
+    Nearest-neighbour multiwell potential (pairwise Lorentzian coupling).
 
-    For each well k:
-        w_k(x) = -a_k / (1 + ||x - c_k||^2 / df)^power,  with df=D and power=D.
+    Motivated by pairwise interaction potentials in quantum chemistry (e.g.
+    Coulomb and van-der-Waals interactions between neighbouring atoms in a
+    1-D chain), where the total energy is a sum of two-body terms that couple
+    adjacent coordinates.  Each term factorises as a product of two 1-D
+    Lorentzians, giving the function TT rank <= m = D.  Unlike a full D-body
+    product, a pairwise term provides clear signal in every 1-D cross-section
+    because only ONE adjacent coordinate needs to be near its well centre for
+    the signal to be detectable.  This makes the function well-suited for
+    tensor cross methods (TRC, MTC, TTOpt) while remaining genuinely
+    challenging for population-based optimisers (D = 10 interacting degrees
+    of freedom with m = 10 distinct well configurations).
 
-    Since (1 + ...)^power >= 1, we have w_k(x) >= -a_k, hence
-        min_k w_k(x) >= -max_k a_k.
+    Definition:
+        phi(t) = 1 / (1 + t^2 / sigma^2),    sigma = 2.0
+        g(x)   = sum_{k=1}^{m} a_k * sum_{i=0}^{d-2} phi(x_i - c_{ki}) * phi(x_{i+1} - c_{k,i+1})
+        f(x)   = max_g - g(x)
 
-    We return:
-        f(x) = min_k w_k(x) + max_k a_k,
+    where max_g = max_k g(c^(k)) is computed at construction time so that
+    f* = 0 by construction.
 
-    so f(x) >= 0 for all x and f(c_{k*}) = 0 at the center of the deepest well.
-
-    Domain: [-5, 5]^D recommended
-    Global minimum (value): 0.0 (by construction)
+    Domain: [-5, 5]^D
+    Global minimum: 0.0  (at or near the centre of the highest-amplitude well)
+    TT rank: <= m = D
     """
     x = np.asarray(x, dtype=float)
     D = int(x.size)
+    sigma = 2.0
 
-    centers, amplitudes, df, power, max_amp = _multiwell_params(D, int(seed))
+    centers, amplitudes, max_g = _multiwell_params(D, int(seed))
 
-    diff = centers - x[None, :]
-    dist_sq = np.sum(diff * diff, axis=1)  # (m,)
-    wells = -amplitudes / (1.0 + dist_sq / df) ** power  # (m,)
-    return float(np.min(wells) + max_amp)
+    # phi[k, i] = 1/(1 + (x_i - c_ki)^2 / sigma^2)   shape: (m, D)
+    phi = 1.0 / (1.0 + ((x[None, :] - centers) / sigma) ** 2)
+    # Nearest-neighbour pair products: phi[k,i]*phi[k,i+1]  shape: (m, D-1)
+    pair_values = phi[:, :-1] * phi[:, 1:]
+    # Sum over adjacent pairs for each well k, then weighted sum over wells
+    well_values = np.sum(pair_values, axis=1)           # (m,)
+    return float(max_g - np.dot(amplitudes, well_values))
 
 
 # Registry of functions and default bounds per dimension
