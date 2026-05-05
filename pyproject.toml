@@ -31,3 +31,6 @@ matplotlib-stubs = "0.3.11"
 [tool.poetry.group.benchmarking.dependencies]
 matplotlib = "^3.8.0"
 tqdm = "^4.67.1"
+
+[tool.poetry]
+packages = [{ include = "mtopt" }]
