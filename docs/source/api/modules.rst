@@ -1,7 +1,7 @@
-mtopt
+tq_mtopt
 =====
 
 .. toctree::
    :maxdepth: 4
 
-   mtopt
+   tq_mtopt

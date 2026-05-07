@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from mtopt.tensor import Tensor, tensordot
+from tq_mtopt.tensor import Tensor, tensordot
 
 
 def test_tensor_creation_normalizes_edges():
@@ -91,7 +91,7 @@ def test_flatten_with_monkeypatched_back_permutation(monkeypatch):
     behavior for the test: move the requested edge to the last axis
     while keeping the others in their original order.
     """
-    import mtopt.tensor as tensor_mod
+    import tq_mtopt.tensor as tensor_mod
 
     def fake_back_permutation(edges, edge):
         # edges: list of edge labels; edge: canonical edge to keep last

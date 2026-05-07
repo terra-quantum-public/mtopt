@@ -1,4 +1,4 @@
-# Contributing to `mtopt`
+# Contributing to `tq-mtopt`
 
 Thank you for your interest in contributing! This document explains how to get started, submit changes, and keep your work aligned with the project's standards.
 
@@ -158,7 +158,7 @@ Before opening a PR, please confirm that:
 - [ ] All existing tests still pass (`pytest tests`)
 - [ ] New public functions include [NumPy-style docstrings](https://numpydoc.readthedocs.io/en/latest/format.html)
 - [ ] Code is formatted with `black .`
-- [ ] Linting passes (`ruff check .` / `pylint mtopt`)
+- [ ] Linting passes (`ruff check .` / `pylint tq_mtopt`)
 - [ ] If suitable, the change is documented in `docs/` or demonstrated in an example
 
 ---
@@ -175,7 +175,7 @@ Additional linting is handled by [Ruff](https://docs.astral.sh/ruff/) and [Pylin
 
 ```bash
 ruff check .
-pylint mtopt
+pylint tq_mtopt
 ```
 
 ---
@@ -198,4 +198,4 @@ Documentation is built with [Sphinx](https://www.sphinx-doc.org/). A convenience
 ./generate_docs.sh
 ```
 
-Full documentation is published at [mtopt.readthedocs.io](https://mtopt.readthedocs.io/en/latest/).
+Full documentation is published at [tqmtopt.readthedocs.io](https://tqmtopt.readthedocs.io/en/latest/).

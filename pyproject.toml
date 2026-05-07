@@ -33,4 +33,4 @@ matplotlib = "^3.10.9"
 tqdm = "^4.67.1"
 
 [tool.poetry]
-packages = [{ include = "mtopt" }]
+packages = [{ include = "tq_mtopt" }]

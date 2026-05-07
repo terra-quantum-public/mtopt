@@ -11,7 +11,7 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join("..", "..")))
 
-project = 'mtopt'
+project = 'tq-mtopt'
 copyright = '2025, Roman Ellerbrock, Aleksandr Berezutskii'
 author = 'Roman Ellerbrock, Aleksandr Berezutskii'
 release = '0.1.0'

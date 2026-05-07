@@ -1,61 +1,53 @@
-mtopt package
+tq_mtopt package
 =============
 
 Submodules
 ----------
 
-mtopt.grid module
+tq_mtopt.grid module
 -----------------
 
-.. automodule:: mtopt.grid
+.. automodule:: tq_mtopt.grid
    :members:
    :show-inheritance:
    :undoc-members:
 
-mtopt.maxvol module
+tq_mtopt.maxvol module
 -------------------
 
-.. automodule:: mtopt.maxvol
+.. automodule:: tq_mtopt.maxvol
    :members:
    :show-inheritance:
    :undoc-members:
 
-mtopt.network module
+tq_mtopt.network module
 --------------------
 
-.. automodule:: mtopt.network
+.. automodule:: tq_mtopt.network
    :members:
    :show-inheritance:
    :undoc-members:
 
-mtopt.optimization module
+tq_mtopt.optimization module
 -------------------------
 
-.. automodule:: mtopt.optimization
+.. automodule:: tq_mtopt.optimization
    :members:
    :show-inheritance:
    :undoc-members:
 
-mtopt.plot module
+tq_mtopt.plot module
 -----------------
 
-.. automodule:: mtopt.plot
+.. automodule:: tq_mtopt.plot
    :members:
    :show-inheritance:
    :undoc-members:
 
-mtopt.qtt module
-----------------
-
-.. automodule:: mtopt.qtt
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
-mtopt.tensor module
+tq_mtopt.tensor module
 -------------------
 
-.. automodule:: mtopt.tensor
+.. automodule:: tq_mtopt.tensor
    :members:
    :show-inheritance:
    :undoc-members:
@@ -63,7 +55,7 @@ mtopt.tensor module
 Module contents
 ---------------
 
-.. automodule:: mtopt
+.. automodule:: tq_mtopt
    :members:
    :show-inheritance:
    :undoc-members:

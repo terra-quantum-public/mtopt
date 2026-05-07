@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from mtopt.maxvol import maxvol, maxvol_rectangular
+from tq_mtopt.maxvol import maxvol, maxvol_rectangular
 
 
 # ----------------------------------------------------------------------

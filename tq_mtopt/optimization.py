@@ -38,22 +38,22 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import linear_sum_assignment
 
-from mtopt.grid import (
+from tq_mtopt.grid import (
     Grid,
     cartesian_product,
     maxvol_grids,
     regularized_inverse,
     tensor_network_grid,
 )
-from mtopt.maxvol import maxvol
-from mtopt.network import (
+from tq_mtopt.maxvol import maxvol
+from tq_mtopt.network import (
     collect,
     flip,
     pre_edges,
     star_sweep,
     sweep,
 )
-from mtopt.tensor import Tensor
+from tq_mtopt.tensor import Tensor
 
 
 class Model:
@@ -820,8 +820,8 @@ def tree_tensor_network_optimize(
     ----------
     graph :
         Tensor-network graph (e.g. from
-        :func:`mtopt.network.tensor_train_network` or
-        :func:`mtopt.network.balanced_tree`), equipped at least with
+        :func:`tq_mtopt.network.tensor_train_network` or
+        :func:`tq_mtopt.network.balanced_tree`), equipped at least with
         edge ranks ``"r"`` and leaf coordinates if
         ``primitive_grid`` is provided.
     objective :
@@ -836,7 +836,7 @@ def tree_tensor_network_optimize(
     start_grid :
         Optional 2D array used by :func:`tn_grid` as a deterministic
         source of grid points instead of random subsets. See
-        :func:`mtopt.grid.tn_grid` for details.
+        :func:`tq_mtopt.grid.tn_grid` for details.
 
     Returns
     -------

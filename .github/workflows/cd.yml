@@ -42,7 +42,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           path: dist/*.whl
-          name: mtopt
+          name: tq-mtopt
 
   release:
     name: Publish package
@@ -72,7 +72,7 @@ jobs:
       - name: Download wheel artifact
         uses: actions/download-artifact@v8
         with:
-          name: mtopt
+          name: tq-mtopt
           path: dist
       - name: Publish to GCP artifacts registry
         run: |
@@ -92,4 +92,4 @@ jobs:
     steps:
       - uses: geekyeggo/delete-artifact@v6
         with:
-          name: mtopt
+          name: tq-mtopt

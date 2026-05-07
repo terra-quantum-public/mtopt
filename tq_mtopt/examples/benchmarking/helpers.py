@@ -26,9 +26,9 @@ from scipy.optimize import differential_evolution, dual_annealing
 
 from threshold_logger import RawEvalLogger, first_hit_calls
 
-from mtopt.network import tensor_train_graph
-from mtopt.grid import Grid
-from mtopt.optimization import (
+from tq_mtopt.network import tensor_train_graph
+from tq_mtopt.grid import Grid
+from tq_mtopt.optimization import (
     tree_tensor_network_optimize,
     MatrixTrainOptimization,
     TensorRankOptimization,
@@ -36,7 +36,7 @@ from mtopt.optimization import (
     Objective,
 )
 
-from mtopt.qtt import (
+from tq_mtopt.qtt import (
     QTTDecoder,
     qtt_primitive_arrays,
     qtt_primitive_grids,

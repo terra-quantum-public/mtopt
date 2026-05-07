@@ -5,12 +5,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from mtopt.grid import Grid, tensor_network_grid
-from mtopt.network import (
+from tq_mtopt.grid import Grid, tensor_network_grid
+from tq_mtopt.network import (
     is_leaf,
     tensor_train_graph,
 )
-from mtopt.optimization import (
+from tq_mtopt.optimization import (
     Objective,
     OptimizationLogger,
     greedy_with_group_assignment,

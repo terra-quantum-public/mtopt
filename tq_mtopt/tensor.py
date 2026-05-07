@@ -1,14 +1,14 @@
 r"""
 Tensor utilities for tensor rank cross and matrix train optimizers.
 
-This module defines :class:`mtopt.tensor.Tensor`, a thin wrapper around
+This module defines :class:`tq_mtopt.tensor.Tensor`, a thin wrapper around
 :class:`numpy.ndarray` that carries additional metadata describing a tensor
-network structure, and :func:`mtopt.tensor.tensordot`, a convenience
+network structure, and :func:`tq_mtopt.tensor.tensordot`, a convenience
 function for contracting tensors along a named edge.
 
 The main idea is to keep a lightweight but explicit mapping between tensor
 axes and edges in a tensor network graph. Each axis of a
-:class:`~mtopt.tensor.Tensor` is annotated by an ``edge`` label. These
+:class:`~tq_mtopt.tensor.Tensor` is annotated by an ``edge`` label. These
 labels are used to:
 
 * keep track of how tensors are connected in a tensor network, and
@@ -33,7 +33,7 @@ Example
 Construct a tensor with edge labels and contract it along a shared edge::
 
     >>> import numpy as np
-    >>> from mtopt.tensor import Tensor, tensordot
+    >>> from tq_mtopt.tensor import Tensor, tensordot
     >>> A = Tensor(np.ones((2, 3)), edges=["i", "k"])
     >>> B = Tensor(np.ones((3, 4)), edges=["k", "j"])
     >>> C = tensordot(A, B, edge="k")
@@ -71,7 +71,7 @@ from typing import Any, Iterable, List, Optional, Sequence, Tuple
 import numpy as np
 from numpy.typing import ArrayLike
 
-from mtopt.network import back_permutation
+from tq_mtopt.network import back_permutation
 
 
 # An edge is stored as a tuple, its contents are intentionally generic.

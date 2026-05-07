@@ -1,5 +1,5 @@
 ---
-title: 'mtopt: tensor rank cross and matrix train cross representations for sample‑efficient black‑box optimization'
+title: 'tq-mtopt: tensor rank cross and matrix train cross representations for sample‑efficient black‑box optimization'
 tags:
   - python
   - optimization
@@ -26,7 +26,7 @@ bibliography: paper.bib
 
 # Summary
 
-**mtopt** is a lightweight Python library that implements several optimizers on discrete grids by extending matrix cross approximation to several types of tensor networks. The first, **Tensor Rank Cross (TRC)** is a cross approximation for tensor rank decomposition (also called canonical diadic decomposition (Candecomp)). The second, **Matrix Train Cross (MTC)** approximation is a cross approximation that combines features of TRC and Tensor Train (also called Matrix Product State (MPS)) decomposition. Finally, the package also includes a general Tree Tensor Network (TTN) optimizer that can be applied to any user-defined tree structure. The methods build low‑rank tensor representations of a function from a small number of function evaluations, then extract candidate optima directly from the representations. The package is designed specifically for high-dimensional functions with multiple local minima, where each function evaluation is computationally expensive.
+**tq-mtopt** is a lightweight Python library that implements several optimizers on discrete grids by extending matrix cross approximation to several types of tensor networks. The first, **Tensor Rank Cross (TRC)** is a cross approximation for tensor rank decomposition (also called canonical diadic decomposition (Candecomp)). The second, **Matrix Train Cross (MTC)** approximation is a cross approximation that combines features of TRC and Tensor Train (also called Matrix Product State (MPS)) decomposition. Finally, the package also includes a general Tree Tensor Network (TTN) optimizer that can be applied to any user-defined tree structure. The methods build low‑rank tensor representations of a function from a small number of function evaluations, then extract candidate optima directly from the representations. The package is designed specifically for high-dimensional functions with multiple local minima, where each function evaluation is computationally expensive.
 
 
 # Statement of need
@@ -51,9 +51,9 @@ Many real-world optimization problems are high-dimensional and non-convex, with 
 
 ```python
 import numpy as np
-from mtopt.grid import Grid, tensor_network_grid, build_node_grid
-from mtopt.network import balanced_tree, root
-from mtopt.optimization import (
+from tq_mtopt.grid import Grid, tensor_network_grid, build_node_grid
+from tq_mtopt.network import balanced_tree, root
+from tq_mtopt.optimization import (
     TensorRankOptimization,
     MatrixTrainOptimization,
     Objective,
@@ -108,7 +108,7 @@ print(top_k.to_string())
 ```
 
 Following the minimal example above, users can easily adapt the objective, discretization, rank schedule, and evaluation budget to their application. Additional usage examples as well as the detailed API documentation are provided in the
-[mtopt Documentation](https://mtopt.readthedocs.io/en/latest/).
+[tq-mtopt Documentation](https://tqmtopt.readthedocs.io/en/latest/).
 
 
 # Al Usage Disclosure

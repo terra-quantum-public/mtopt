@@ -1,4 +1,4 @@
-"""Unit tests for mtopt/qtt.py.
+"""Unit tests for tq_mtopt/qtt.py.
 
 Coverage:
   - qtt_digits_to_index: digit<->index round-trips, MSB/LSB, base>2, batch
@@ -13,7 +13,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from mtopt.qtt import (
+from tq_mtopt.qtt import (
     QTTDecoder,
     make_qtt_objective,
     qtt_coordinate_map,

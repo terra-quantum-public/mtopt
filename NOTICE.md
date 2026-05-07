@@ -1,10 +1,10 @@
-mtopt includes components that are licensed from third parties:
+tq-mtopt includes components that are licensed from third parties:
 
 -------------------------------------------------------------------------------
 Code provenance
 -------------------------------------------------------------------------------
-Portions of mtopt/optimization.py (variation updates, recombination, grid
-selection) and mtopt/maxvol.py (maxvol, maxvol_rectangular) are adapted from:
+Portions of tq_mtopt/optimization.py (variation updates, recombination, grid
+selection) and tq_mtopt/maxvol.py (maxvol, maxvol_rectangular) are adapted from:
 
   - teneva by Andrei Chertkov (https://github.com/AndreiChertkov/teneva)
     License: MIT

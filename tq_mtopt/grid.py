@@ -50,9 +50,9 @@ from typing import Any, Iterable, List, Sequence, Tuple, Union
 
 import numpy as np
 
-from mtopt.maxvol import maxvol
-from mtopt.tensor import Tensor
-from mtopt.network import (
+from tq_mtopt.maxvol import maxvol
+from tq_mtopt.tensor import Tensor
+from tq_mtopt.network import (
     is_leaf_node,
     collect,
     up_leaves,

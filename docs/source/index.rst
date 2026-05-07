@@ -1,7 +1,7 @@
-mtopt Documentation
+tq_mtopt Documentation
 ============================
 
-mtopt is a lightweight Python library that implements two optimizers for black-box optimization on discrete grids:
+tq_mtopt is a lightweight Python library that implements two optimizers for black-box optimization on discrete grids:
 Tensor Rank Cross (TRC) and Matrix Train (MT). Both methods build low-rank tensor representations of the objective
 from a small number of function evaluations, then extract candidate optima directly from the representations.
 The package targets use-cases where objective gradients are unavailable or unreliable,

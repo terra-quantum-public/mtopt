@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from mtopt.grid import (
+from tq_mtopt.grid import (
     Grid,
     cartesian_product,
     direct_sum,

@@ -1,9 +1,9 @@
 import numpy as np
 import networkx as nx
 
-from mtopt.grid import Grid, tensor_network_grid
+from tq_mtopt.grid import Grid, tensor_network_grid
 
-from mtopt.network import (
+from tq_mtopt.network import (
     pre_edges,
     is_leaf,
     is_leaf_node,

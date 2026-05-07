@@ -1,7 +1,7 @@
 """
 Quantized Tensor-Train (QTT) utilities.
 
-This module provides a lightweight "grid quantization" layer for mtopt.
+This module provides a lightweight "grid quantization" layer for tq_mtopt.
 
 Background
 ----------
@@ -37,7 +37,7 @@ from typing import Callable, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
-from mtopt.grid import Grid
+from tq_mtopt.grid import Grid
 
 
 ArrayLike = Union[np.ndarray, Sequence[float], Sequence[int]]
@@ -154,14 +154,14 @@ def qtt_primitive_grids(
     base: int = 2,
 ) -> List["Grid"]:
     """
-    Convenience: return mtopt.grid.Grid objects for each digit coordinate.
+    Convenience: return tq_mtopt.grid.Grid objects for each digit coordinate.
 
-    This is the natural input format for mtopt.optimization models that expect
-    a list of 1D :class:`~mtopt.grid.Grid` primitives.
+    This is the natural input format for tq_mtopt.optimization models that expect
+    a list of 1D :class:`~tq_mtopt.grid.Grid` primitives.
 
     Notes
     -----
-    Requires :class:`~mtopt.grid.Grid` to be available from :mod:`mtopt.grid`.
+    Requires :class:`~tq_mtopt.grid.Grid` to be available from :mod:`tq_mtopt.grid`.
     """
 
     prim_arrays = qtt_primitive_arrays(num_vars=num_vars, levels=levels, base=base)

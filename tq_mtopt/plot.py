@@ -13,7 +13,7 @@ and are imported lazily inside the plotting routines.
 
 .. note::
     The functions in this module have the following optional dependencies
-    that are **not** installed automatically with ``mtopt``:
+    that are **not** installed automatically with ``tq-mtopt``:
 
     * :mod:`plotly` — required for 3D point cloud and animated scatter plots.
     * :mod:`matplotlib` — required for tensor-train and tree tensor network diagrams.
@@ -51,8 +51,8 @@ import networkx as nx
 import pandas as pd
 import numpy as np
 
-from mtopt.network import add_layer_index, up_leaves, children
-from mtopt.grid import Grid, direct_sum
+from tq_mtopt.network import add_layer_index, up_leaves, children
+from tq_mtopt.grid import Grid, direct_sum
 
 
 __all__ = [
@@ -88,7 +88,7 @@ def plot_xyz(
     Parameters
     ----------
     grid :
-        Either a :class:`~mtopt.grid.Grid` instance with exactly three
+        Either a :class:`~tq_mtopt.grid.Grid` instance with exactly three
         coordinates, or an array-like object of shape ``(n_points, 3)``
         containing the :math:`x, y, z` coordinates of the points.
     values :
@@ -186,7 +186,7 @@ def plot_tensor_train_diagram(
     The TT is assumed to be represented as a directed graph where
     physical (leaf) nodes have negative indices and core nodes have
     non-negative indices, as constructed by
-    :func:`mtopt.network.tensor_train_graph`.
+    :func:`tq_mtopt.network.tensor_train_graph`.
 
     Parameters
     ----------
@@ -252,7 +252,7 @@ def plot_tensor_network_xyz(
     This helper:
 
     1. Collects all node grids stored under the ``"grid"`` attribute,
-       and forms their direct sum via :func:`mtopt.grid.direct_sum`.
+       and forms their direct sum via :func:`tq_mtopt.grid.direct_sum`.
     2. Optionally applies a coordinate transformation ``q_to_x`` to
        each grid point.
     3. Evaluates ``func`` on all resulting points.
@@ -262,7 +262,7 @@ def plot_tensor_network_xyz(
     ----------
     graph :
         Tensor-network-like graph with node attribute ``"grid"`` set to
-        :class:`~mtopt.grid.Grid` instances.
+        :class:`~tq_mtopt.grid.Grid` instances.
     func :
         Callable with signature ``func(point) -> float``, where
         ``point`` is a 1D array-like representing the coordinates of a
@@ -270,7 +270,7 @@ def plot_tensor_network_xyz(
     q_to_x :
         Optional callable mapping coordinates from an internal space
         (e.g. :math:`q`) to a physical space (e.g. :math:`x`). It is
-        applied via :meth:`mtopt.grid.Grid.transform` before evaluating
+        applied via :meth:`tq_mtopt.grid.Grid.transform` before evaluating
         ``func``.
     ranges :
         Optional axis ranges forwarded to :func:`plot_xyz`.
@@ -307,7 +307,7 @@ def tensor_network_to_dataframe(graph: nx.Graph, func=None):
     ----------
     graph :
         Tensor-network-like graph with node attribute ``"grid"`` set to
-        :class:`~mtopt.grid.Grid` instances.
+        :class:`~tq_mtopt.grid.Grid` instances.
     func :
         Optional callable with signature ``func(point) -> float`` used
         to compute a scalar value at each grid point. If provided, the
@@ -362,7 +362,7 @@ def plot_tree(
     r"""
     Plot a tree-like tensor network laid out by depth (layer index).
 
-    The layout uses :func:`mtopt.network.add_layer_index` to assign a
+    The layout uses :func:`tq_mtopt.network.add_layer_index` to assign a
     ``"layer"`` attribute to each node, then:
 
     * places leaf nodes (negative indices) evenly along the top,
@@ -444,7 +444,7 @@ def tensor_network_grid_to_dataframe(graph: nx.Graph, objective) -> "pd.DataFram
     ----------
     graph :
         Tensor-network-like graph with node attribute ``"grid"`` set to
-        :class:`~mtopt.grid.Grid` instances.
+        :class:`~tq_mtopt.grid.Grid` instances.
     objective :
         Either a callable with signature ``objective(point) -> float``
         or an object with a method ``Err(point) -> float`` (for

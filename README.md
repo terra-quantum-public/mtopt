@@ -1,11 +1,11 @@
-# `mtopt` — tensor rank cross and matrix train cross optimizers.
+# `tq-mtopt` — tensor rank cross and matrix train cross optimizers.
 
 [![Lint](https://github.com/terra-quantum-public/mtopt/actions/workflows/lint.yml/badge.svg)](https://github.com/terra-quantum-public/mtopt/actions/workflows/lint.yml)
 [![Tests](https://github.com/terra-quantum-public/mtopt/actions/workflows/tests.yml/badge.svg)](https://github.com/terra-quantum-public/mtopt/actions/workflows/tests.yml)
 [![CD](https://github.com/terra-quantum-public/mtopt/actions/workflows/cd.yml/badge.svg)](https://github.com/terra-quantum-public/mtopt/actions/workflows/cd.yml)
 [![Dependency Review](https://github.com/terra-quantum-public/mtopt/actions/workflows/dependency-review.yml/badge.svg)](https://github.com/terra-quantum-public/mtopt/actions/workflows/dependency-review.yml)
 
-##### `mtopt` is a lightweight Python library that implements several optimizers on discrete grids by extending matrix cross approximation to several types of tensor networks. The first, **Tensor Rank Cross (TRC)** is a cross approximation for tensor rank decomposition (also called canonical diadic decomposition (Candecomp)). The second, **Matrix Train Cross (MTC)** approximation is a cross approximation that combines features of TRC and Tensor Train (also called Matrix Product State (MPS)) decomposition. Finally, the package also includes a general Tree Tensor Network (TTN) optimizer that can be applied to any user-defined tree structure. The methods build low‑rank tensor representations of a function from a small number of function evaluations, then extract candidate optima directly from the representations. The package is designed specifically for high-dimensional functions with multiple local minima, where each function evaluation is computationally expensive.
+##### `tq-mtopt` is a lightweight Python library that implements several optimizers on discrete grids by extending matrix cross approximation to several types of tensor networks. The first, **Tensor Rank Cross (TRC)** is a cross approximation for tensor rank decomposition (also called canonical diadic decomposition (Candecomp)). The second, **Matrix Train Cross (MTC)** approximation is a cross approximation that combines features of TRC and Tensor Train (also called Matrix Product State (MPS)) decomposition. Finally, the package also includes a general Tree Tensor Network (TTN) optimizer that can be applied to any user-defined tree structure. The methods build low‑rank tensor representations of a function from a small number of function evaluations, then extract candidate optima directly from the representations. The package is designed specifically for high-dimensional functions with multiple local minima, where each function evaluation is computationally expensive.
 
 ## Installation
 
@@ -23,7 +23,7 @@ poetry install
 
 ### Optional dependencies
 
-The core library has no plotting dependencies. Functions in `mtopt.plot` require one or more of the following, depending on what you use:
+The core library has no plotting dependencies. Functions in `tq_mtopt.plot` require one or more of the following, depending on what you use:
 
 | Extra | Required by |
 |---|---|
@@ -41,9 +41,9 @@ pip install plotly matplotlib imageio
 
 ```python
 import numpy as np
-from mtopt.grid import Grid, tensor_network_grid, build_node_grid
-from mtopt.network import balanced_tree, root
-from mtopt.optimization import (
+from tq_mtopt.grid import Grid, tensor_network_grid, build_node_grid
+from tq_mtopt.network import balanced_tree, root
+from tq_mtopt.optimization import (
     TensorRankOptimization,
     MatrixTrainOptimization,
     Objective,
@@ -102,7 +102,7 @@ print(top_k.to_string())
 The examples module contains full workflows that demonstrate typical use cases. Each example is fully documented and serves as a starting point for building your own experiments. The package has been tested on macOS and Linux and does not currently support Windows.
 
 ## Cite
-If you happen to find `mtopt` useful in your work, please consider supporting development by citing it. (Here goes the BibTeX entry for our future JOSS paper as well for the algorithm paper.)
+If you happen to find `tq-mtopt` useful in your work, please consider supporting development by citing it. (Here goes the BibTeX entry for our future JOSS paper as well for the algorithm paper.)
 ```
 @article{x,
   title={x},
@@ -128,4 +128,4 @@ See [NOTICE.md](NOTICE.md) for additional attribution and third-party notices.
 
 ## Documentation
 
-Full documentation is available at [mtopt.readthedocs.io](https://mtopt.readthedocs.io/en/latest/).
+Full documentation is available at [tqmtopt.readthedocs.io](https://tqmtopt.readthedocs.io/en/latest/).
