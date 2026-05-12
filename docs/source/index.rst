@@ -24,13 +24,6 @@ Contents
 
 .. toctree::
    :maxdepth: 2
-   :caption: User Guide:
-
-   usage
-   benchmarks
-
-.. toctree::
-   :maxdepth: 2
    :caption: API Reference:
 
    api/modules

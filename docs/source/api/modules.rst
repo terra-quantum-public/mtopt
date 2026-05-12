@@ -1,5 +1,5 @@
 tq_mtopt
-=====
+========
 
 .. toctree::
    :maxdepth: 4

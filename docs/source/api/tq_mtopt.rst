@@ -1,11 +1,11 @@
 tq_mtopt package
-=============
+================
 
 Submodules
 ----------
 
 tq_mtopt.grid module
------------------
+--------------------
 
 .. automodule:: tq_mtopt.grid
    :members:
@@ -13,7 +13,7 @@ tq_mtopt.grid module
    :undoc-members:
 
 tq_mtopt.maxvol module
--------------------
+----------------------
 
 .. automodule:: tq_mtopt.maxvol
    :members:
@@ -21,7 +21,7 @@ tq_mtopt.maxvol module
    :undoc-members:
 
 tq_mtopt.network module
---------------------
+-----------------------
 
 .. automodule:: tq_mtopt.network
    :members:
@@ -29,7 +29,7 @@ tq_mtopt.network module
    :undoc-members:
 
 tq_mtopt.optimization module
--------------------------
+----------------------------
 
 .. automodule:: tq_mtopt.optimization
    :members:
@@ -37,7 +37,7 @@ tq_mtopt.optimization module
    :undoc-members:
 
 tq_mtopt.plot module
------------------
+--------------------
 
 .. automodule:: tq_mtopt.plot
    :members:
@@ -45,7 +45,7 @@ tq_mtopt.plot module
    :undoc-members:
 
 tq_mtopt.qtt module
-----------------
+-------------------
 
 .. automodule:: tq_mtopt.qtt
    :members:
@@ -53,7 +53,7 @@ tq_mtopt.qtt module
    :undoc-members:
 
 tq_mtopt.tensor module
--------------------
+----------------------
 
 .. automodule:: tq_mtopt.tensor
    :members:
