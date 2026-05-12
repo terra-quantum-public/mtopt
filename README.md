@@ -127,4 +127,4 @@ See [NOTICE.md](NOTICE.md) for additional attribution and third-party notices.
 
 ## Documentation
 
-Full documentation is available at [tqmtopt.readthedocs.io](https://tqmtopt.readthedocs.io/en/latest/).
+Full documentation is available at [tq-mtopt.readthedocs.io](https://tq-mtopt.readthedocs.io/en/latest/).
