@@ -32,5 +32,11 @@ matplotlib-stubs = "0.3.11"
 matplotlib = "^3.10.9"
 tqdm = "^4.67.1"
 
+
+[tool.poetry.group.docs.dependencies]
+sphinx = ">=7.0"
+sphinx-rtd-theme = ">=2.0"
+sphinx-autodoc-typehints = ">=2.0"
+
 [tool.poetry]
 packages = [{ include = "tq_mtopt" }]
