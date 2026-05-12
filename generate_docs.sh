@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Package source code path
-PACKAGE_PATH="mtopt"
+PACKAGE_PATH="tq_mtopt"
 
 # Sphinx docs directories
 DOCS_SOURCE_DIR="docs/source"
