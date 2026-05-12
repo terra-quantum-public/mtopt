@@ -40,8 +40,8 @@ pip install plotly matplotlib imageio
 
 ```python
 import numpy as np
-from tq_mtopt.grid import Grid, tensor_network_grid, build_node_grid
-from tq_mtopt.network import balanced_tree, root
+from tq_mtopt.grid import Grid, tensor_network_grid
+from tq_mtopt.network import balanced_tree
 from tq_mtopt.optimization import (
     TensorRankOptimization,
     MatrixTrainOptimization,
