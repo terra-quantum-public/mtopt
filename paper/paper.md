@@ -126,7 +126,7 @@ print(top_k.to_string())
 ```
 
 Following the minimal example above, users can easily adapt the objective, discretization, rank schedule, and evaluation budget to their application. Additional usage examples as well as the detailed API documentation are provided in the
-[tq-mtopt Documentation](https://tqmtopt.readthedocs.io/en/latest/).
+[documentation](https://tq-mtopt.readthedocs.io/en/latest/).
 
 
 # Research impact statement
